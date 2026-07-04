@@ -1,0 +1,84 @@
+# =====================================================
+# Secrets — NEVER commit. Templates (*.example/*.sample) are kept.
+# =====================================================
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.*.example
+keys.env
+**/keys.env
+**/credentials/
+*credential*.json
+*-service-account*.json
+*.pem
+*.key
+
+# Leftover credential/setup temp scripts
+_apply_creds*.py
+_*.json
+_*.txt
+_ck*
+_st.json
+_boot.log
+
+# =====================================================
+# Virtualenvs / dependencies (regenerable, large)
+# =====================================================
+.venv/
+venv/
+**/.venv/
+node_modules/
+**/node_modules/
+
+# =====================================================
+# Caches / build artifacts
+# =====================================================
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+dist/
+**/dist/
+build/
+.turbo/
+
+# =====================================================
+# Runtime state — logs, databases, model artifacts (regenerable)
+# =====================================================
+logs/
+*.log
+*.log.err
+*.db
+*.db-shm
+*.db-wal
+**/data/live/
+**/data/trading/*.db*
+**/data/*.db*
+**/chroma*/
+**/vector_memory/
+*.pkl
+models/*.pkl
+
+# =====================================================
+# OS / editor noise
+# =====================================================
+.DS_Store
+Thumbs.db
+*.swp
+
+# =====================================================
+# Machine-specific runtime config + state (open-source hygiene)
+# config.example.yaml is the tracked template.
+# =====================================================
+aggregator/config.yaml
+aggregator/data/
+llm-trader-instances/*/data/
+llm-trader-instances/*/logs/
+llm-trader/logs/
+llm-trader/cache/
+llm-tradebot/logs/
+orderflow/.mypy_cache/

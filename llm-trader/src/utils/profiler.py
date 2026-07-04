@@ -1,0 +1,76 @@
+import time
+import functools
+import asyncio
+from typing import Callable, Any
+
+
+def _logger_debug_enabled() -> bool:
+    try:
+        from src.config.loader import config
+        return bool(config.LOGGER_DEBUG)
+    except Exception:
+        return False
+
+def profile_performance(func: Callable) -> Callable:
+    """
+    Decorator to measure and log the execution time of a method.
+    Only active when logger_debug is True in config.
+    """
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs) -> Any:
+        # Check config at runtime to allow hot reloading
+        if not _logger_debug_enabled():
+            return await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) \
+                else func(*args, **kwargs)
+
+        instance = args[0]
+        logger = instance.logger
+
+        start_time = time.perf_counter()
+        class_name = instance.__class__.__name__
+        method_name = func.__name__
+
+        try:
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
+            return result
+        finally:
+            end_time = time.perf_counter()
+            duration = (end_time - start_time) * 1000  # Convert to ms
+
+            # Identify if it's a "slow" operation (>1s) for highlight
+            slow_marker = " [SLOW]" if duration > 1000 else ""
+            msg = f"Performance: {class_name}.{method_name} took {duration:.2f}ms{slow_marker}"
+
+            logger.debug(msg)
+
+    @functools.wraps(func)
+    def sync_wrapper(*args, **kwargs) -> Any:
+        if not _logger_debug_enabled():
+            return func(*args, **kwargs)
+
+        instance = args[0]
+        logger = instance.logger
+
+        start_time = time.perf_counter()
+        class_name = instance.__class__.__name__
+        method_name = func.__name__
+
+        try:
+            return func(*args, **kwargs)
+        finally:
+            end_time = time.perf_counter()
+            duration = (end_time - start_time) * 1000
+
+            slow_marker = " [SLOW]" if duration > 1000 else ""
+            msg = f"Performance: {class_name}.{method_name} took {duration:.2f}ms{slow_marker}"
+
+            logger.debug(msg)
+
+    # Return appropriate wrapper based on whether the original function is async
+    if asyncio.iscoroutinefunction(func):
+        return wrapper
+    else:
+        return sync_wrapper

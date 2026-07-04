@@ -1,0 +1,183 @@
+diff --git a/.gitignore b/.gitignore
+index b6e79fe..e00209e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -108,3 +108,8 @@ tmp/
+ # Development folders (not for production)
+ nofx-dev/
+ nofx-main/
++
++# Paper-mode local setup
++.venv/
++paper-env.template
++run-paper.ps1
+diff --git a/main.py b/main.py
+index 4285b27..f8485fe 100644
+--- a/main.py
++++ b/main.py
+@@ -76,14 +76,54 @@ from src.trading import MultiAgentTradingBot, TradingParameters
+ print("[DEBUG] All imports complete!")
+ 
+ def start_server():
+-    """Start FastAPI server in a separate thread"""
++    """Start FastAPI server in a separate thread.
++
++    Wrapped in a watchdog loop: if uvicorn's event loop dies for any reason the
++    daemon thread would otherwise exit silently and the API stays down while the
++    trading loop keeps running. Restart it and log why it exited.
++    """
+     import os
++    import time
++    import traceback
++    import urllib.error
++    import urllib.request
+     port = int(os.getenv("PORT", 8000))
+     is_railway = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+     is_production = is_railway or os.getenv("DEPLOYMENT_MODE", "local") != "local"
+     host = "0.0.0.0" if is_production else os.getenv("HOST", "127.0.0.1")
+-    print(f"\n🌍 Starting Web Dashboard at http://{host}:{port}")
+-    uvicorn.run(app, host=host, port=port, log_level="error")
++
++    def _probe(server: "uvicorn.Server", stop: threading.Event) -> None:
++        """Liveness prober: a crashed connection can wedge uvicorn without it
++        exiting (h11 'state is ERROR'), which a return-based watchdog never
++        sees. Probe the socket; on repeated failure force should_exit so the
++        outer loop restarts the server."""
++        fails = 0
++        while not stop.wait(30):
++            try:
++                urllib.request.urlopen(f"http://127.0.0.1:{port}/api/info", timeout=5)
++                fails = 0
++            except urllib.error.HTTPError:
++                fails = 0  # 4xx/5xx still means the server is responding
++            except Exception:
++                fails += 1
++                if fails >= 3:
++                    print("⚠️ Dashboard unresponsive (3 failed probes); forcing restart")
++                    server.should_exit = True
++                    return
++
++    while True:
++        print(f"\n🌍 Starting Web Dashboard at http://{host}:{port}")
++        server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning"))
++        stop_probe = threading.Event()
++        prober = threading.Thread(target=_probe, args=(server, stop_probe), daemon=True)
++        prober.start()
++        try:
++            server.run()
++            print(f"⚠️ Dashboard server exited; restarting in 3s")
++        except Exception:
++            print(f"⚠️ Dashboard server crashed; restarting in 3s\n{traceback.format_exc()}")
++        stop_probe.set()
++        time.sleep(3)
+ 
+ # ============================================
+ # 主入口
+@@ -171,9 +211,15 @@ def main():
+     # 创建机器人
+     bot = MultiAgentTradingBot(trading_parameters)
+ 
+-    # Set initial execution mode before dashboard starts
+-    # Require explicit user action (Start button) to begin trading
+-    global_state.execution_mode = "Stopped"
++    # Set initial execution mode before dashboard starts.
++    # Default requires explicit user action (Start button); AUTO_START=true
++    # (paper mode only) begins trading immediately so unattended restarts of
++    # the whole stack don't leave the bot idle.
++    if os.getenv("AUTO_START", "").lower() == "true" and trading_parameters.test_mode:
++        global_state.execution_mode = "Running"
++        print("▶️ AUTO_START=true (paper mode): trading loop starts immediately")
++    else:
++        global_state.execution_mode = "Stopped"
+     
+     # 启动 Dashboard Server (跳过 headless 模式) - 优先启动，让用户能立即访问
+     if not args.headless:
+diff --git a/src/api/binance_client.py b/src/api/binance_client.py
+index 21b4ed5..66eb608 100644
+--- a/src/api/binance_client.py
++++ b/src/api/binance_client.py
+@@ -72,8 +72,17 @@ class BinanceClient:
+             # Add startTime for incremental fetch
+             if start_time:
+                 params['startTime'] = start_time
+-            
+-            klines = self.client.get_klines(**params)
++
++            # USDT-M FUTURES market data (fapi). The bot trades USDT-M perps,
++            # so klines must come from the futures endpoint. This is required
++            # for futures-only symbols such as SPCXUSDT (TRADIFI_PERPETUAL),
++            # which have no spot market. Fall back to spot only if the futures
++            # endpoint is unavailable for the symbol.
++            try:
++                klines = self.client.futures_klines(**params)
++            except Exception as futures_err:
++                log.warning(f"[API] futures_klines failed for {symbol} {interval} ({futures_err}); falling back to spot klines")
++                klines = self.client.get_klines(**params)
+             
+             # Only warn about low kline count for full fetches (not incremental)
+             if len(klines) < 10 and start_time is None:
+diff --git a/src/runners/action_pipeline_stage_runner.py b/src/runners/action_pipeline_stage_runner.py
+index 659af32..83b4126 100644
+--- a/src/runners/action_pipeline_stage_runner.py
++++ b/src/runners/action_pipeline_stage_runner.py
+@@ -22,6 +22,7 @@ class ActionPipelineStageRunner:
+     ):
+         self.risk_audit_stage_runner = risk_audit_stage_runner
+         self.execution_stage_runner = execution_stage_runner
++        self.saver = saver
+         self.result_builder = ResultBuilder(saver)
+     
+     @log_run
+diff --git a/src/runners/decision_stage_runner.py b/src/runners/decision_stage_runner.py
+index c91495c..123792a 100644
+--- a/src/runners/decision_stage_runner.py
++++ b/src/runners/decision_stage_runner.py
+@@ -231,7 +231,7 @@ class DecisionStageRunner:
+ 
+                 global_state.add_agent_message("decision_core", "⚖️ Running rule-based decision logic...", level="info")
+                 decision_source = 'decision_core'
+-                vote_core = await self.agent_provider.decision_core.make_decision(
++                vote_core = await self.agent_provider.decision_core_agent.make_decision(
+                     quant_analysis=context.quant_analysis,
+                     predict_result=context.predict_result,
+                     market_data=market_data
+diff --git a/src/runners/runner_factory.py b/src/runners/runner_factory.py
+index dc64ff7..25d0f55 100644
+--- a/src/runners/runner_factory.py
++++ b/src/runners/runner_factory.py
+@@ -74,6 +74,7 @@ class RunnerFactory:
+             self.config,
+             self.agent_config,
+             self.strategy_engine,
++            self.agent_provider,
+             self.trading_parameters.max_position_size
+         )
+     
+diff --git a/src/trading/multi_agent_trading_bot.py b/src/trading/multi_agent_trading_bot.py
+index ae57b0e..2a9ab31 100644
+--- a/src/trading/multi_agent_trading_bot.py
++++ b/src/trading/multi_agent_trading_bot.py
+@@ -466,6 +466,23 @@ class MultiAgentTradingBot:
+ 
+         return context
+ 
++    def _get_auto1_execution_bonus(self, symbol: str) -> float:
++        """Priority bonus for the multi-symbol selector's confidence ranking.
++
++        Upstream references this method but never shipped an implementation
++        (AttributeError crashed every multi-symbol selection cycle). A neutral
++        0.0 keeps ranking on pure confidence; if the AUTO1 selector exposes a
++        momentum score for the symbol, use a small fraction of it as tie-break.
++        """
++        selector = getattr(self, 'symbol_selector_agent', None)
++        scores = getattr(selector, 'auto1_scores', None) if selector else None
++        if isinstance(scores, dict):
++            try:
++                return min(5.0, max(0.0, float(scores.get(symbol, 0.0)) * 0.05))
++            except (TypeError, ValueError):
++                return 0.0
++        return 0.0
++
+     async def _run_trading_cycle(self, analyze_only: bool = False) -> Dict:
+         """
+         执行完整的交易循环（异步版本）

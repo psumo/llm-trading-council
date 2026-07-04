@@ -1,0 +1,12 @@
+{
+  "accounts": [
+    {
+      "id": "main-binance",
+      "name": "Main Binance Account",
+      "user_id": "default",
+      "exchange": "binance",
+      "enabled": true,
+      "testnet": true
+    }
+  ]
+}

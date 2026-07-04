@@ -1,0 +1,65 @@
+version: '3.8'
+x-environment:
+  &common-environment
+  - DB_URL=${DB_URL}
+  - SYMBOLS=${SYMBOLS}
+  - USE_RABBITMQ=${USE_RABBITMQ}
+  - RABBITMQ_URL=${RABBITMQ_URL}
+  - RABBITMQ_EXCHANGE=${RABBITMQ_EXCHANGE}
+
+services:
+  binance:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./apps/binance/Dockerfile
+    environment: *common-environment
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    entrypoint: ['node', 'dist/main.js']
+    ports:
+      - ${BINANCE_DOCKER_PORT}:3000
+  bybit:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./apps/bybit/Dockerfile
+    environment: *common-environment
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    entrypoint: ['node', 'dist/main.js']
+    ports:
+      - ${BYBIT_DOCKER_PORT}:3000
+  okx:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./apps/okx/Dockerfile
+    environment: *common-environment
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    entrypoint: ['node', 'dist/main.js']
+    ports:
+      - ${OKX_DOCKER_PORT}:3000
+  bitget:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./apps/bitget/Dockerfile
+    environment: *common-environment
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    entrypoint: ['node', 'dist/main.js']
+    ports:
+      - ${BITGET_DOCKER_PORT}:3000
+  gateio:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./apps/gateio/Dockerfile
+    environment: *common-environment
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    entrypoint: ['node', 'dist/main.js']
+    ports:
+      - ${GATEIO_DOCKER_PORT}:3000

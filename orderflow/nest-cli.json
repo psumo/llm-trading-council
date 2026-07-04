@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/binance/src",
+  "monorepo": true,
+  "root": "apps/binance",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/binance/tsconfig.app.json"
+  },
+  "projects": {
+    "binance": {
+      "type": "application",
+      "root": "apps/binance",
+      "entryFile": "main",
+      "sourceRoot": "apps/binance/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/binance/tsconfig.app.json"
+      }
+    },
+    "bybit": {
+      "type": "application",
+      "root": "apps/bybit",
+      "entryFile": "main",
+      "sourceRoot": "apps/bybit/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/bybit/tsconfig.app.json"
+      }
+    },
+    "gateio": {
+      "type": "application",
+      "root": "apps/gateio",
+      "entryFile": "main",
+      "sourceRoot": "apps/gateio/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/gateio/tsconfig.app.json"
+      }
+    },
+    "okx": {
+      "type": "application",
+      "root": "apps/okx",
+      "entryFile": "main",
+      "sourceRoot": "apps/okx/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/okx/tsconfig.app.json"
+      }
+    },
+    "bitget": {
+      "type": "application",
+      "root": "apps/bitget",
+      "entryFile": "main",
+      "sourceRoot": "apps/bitget/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/bitget/tsconfig.app.json"
+      }
+    },
+    "binance-backfill": {
+      "type": "application",
+      "root": "apps/binance-backfill",
+      "entryFile": "main",
+      "sourceRoot": "apps/binance-backfill/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/binance-backfill/tsconfig.app.json"
+      }
+    },
+    "orderflow": {
+      "type": "library",
+      "root": "libs/orderflow",
+      "entryFile": "index",
+      "sourceRoot": "libs/orderflow/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/orderflow/tsconfig.lib.json"
+      }
+    },
+    "database": {
+      "type": "library",
+      "root": "libs/database",
+      "entryFile": "index",
+      "sourceRoot": "libs/database/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/database/tsconfig.lib.json"
+      }
+    },
+    "shared": {
+      "type": "library",
+      "root": "libs/shared",
+      "entryFile": "index",
+      "sourceRoot": "libs/shared/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/shared/tsconfig.lib.json"
+      }
+    },
+    "rabbitmq": {
+      "type": "library",
+      "root": "libs/rabbitmq",
+      "entryFile": "index",
+      "sourceRoot": "libs/rabbitmq/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/rabbitmq/tsconfig.lib.json"
+      }
+    }
+  }
+}

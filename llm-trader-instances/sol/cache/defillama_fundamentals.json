@@ -1,0 +1,1112 @@
+{
+  "timestamp": "2026-06-12T14:35:07.350210+00:00",
+  "data": {
+    "macro": {
+      "stablecoins_market_cap": 314169241696.12634,
+      "stablecoins_24h_change": 0.08398446840662704,
+      "total_tvl": 71619718877.4652,
+      "top_chains": [
+        {
+          "gecko_id": "ethereum",
+          "tvl": 37462451082.73112,
+          "tokenSymbol": "ETH",
+          "cmcId": "1027",
+          "name": "Ethereum",
+          "chainId": 1
+        },
+        {
+          "gecko_id": "binancecoin",
+          "tvl": 5242813723.1766205,
+          "tokenSymbol": "BNB",
+          "cmcId": "1839",
+          "name": "BSC",
+          "chainId": 56
+        },
+        {
+          "gecko_id": "solana",
+          "tvl": 4646097603.571698,
+          "tokenSymbol": "SOL",
+          "cmcId": "5426",
+          "name": "Solana",
+          "chainId": null
+        },
+        {
+          "gecko_id": "tron",
+          "tvl": 4327022118.185006,
+          "tokenSymbol": "TRON",
+          "cmcId": "1958",
+          "name": "Tron",
+          "chainId": null
+        },
+        {
+          "gecko_id": "bitcoin",
+          "tvl": 4186177414.342761,
+          "tokenSymbol": "BTC",
+          "cmcId": "1",
+          "name": "Bitcoin",
+          "chainId": null
+        }
+      ]
+    },
+    "dex_volumes": {
+      "total_24h": 6307186286.0,
+      "change_1d": -6.0,
+      "top_protocols": [
+        {
+          "total24h": 674022951,
+          "total48hto24h": 760575302,
+          "total7d": 6544443682,
+          "total14dto7d": 6306553114,
+          "total30d": 25197828912,
+          "total60dto30d": 24409147178,
+          "total1y": 310477523121,
+          "annualized1y": 310477523121,
+          "total7DaysAgo": 1274678813,
+          "total30DaysAgo": 739388538,
+          "totalAllTime": 356404226648,
+          "average1y": 850623351.0164384,
+          "monthlyAverage1y": 25892974804.940384,
+          "change_1d": -11.38,
+          "change_7d": -47.12,
+          "change_1m": -8.84,
+          "change_7dover7d": 3.77,
+          "change_30dover30d": 3.23,
+          "breakdown24h": {
+            "blast": {
+              "Uniswap V4": 1430
+            },
+            "ink": {
+              "Uniswap V4": 49
+            },
+            "zora": {
+              "Uniswap V4": 3
+            },
+            "avax": {
+              "Uniswap V4": 123583
+            },
+            "soneium": {
+              "Uniswap V4": 25111
+            },
+            "optimism": {
+              "Uniswap V4": 1023940
+            },
+            "unichain": {
+              "Uniswap V4": 7415558
+            },
+            "monad": {
+              "Uniswap V4": 10691758
+            },
+            "polygon": {
+              "Uniswap V4": 49339638
+            },
+            "arbitrum": {
+              "Uniswap V4": 21405141
+            },
+            "wc": {
+              "Uniswap V4": 173512
+            },
+            "xlayer": {
+              "Uniswap V4": 21424188
+            },
+            "ethereum": {
+              "Uniswap V4": 380415284
+            },
+            "bsc": {
+              "Uniswap V4": 36003387
+            },
+            "base": {
+              "Uniswap V4": 195311068
+            }
+          },
+          "breakdown30d": {
+            "blast": {
+              "Uniswap V4": 19280
+            },
+            "ink": {
+              "Uniswap V4": 6949
+            },
+            "zora": {
+              "Uniswap V4": 91
+            },
+            "soneium": {
+              "Uniswap V4": 1707000
+            },
+            "optimism": {
+              "Uniswap V4": 21657082
+            },
+            "avax": {
+              "Uniswap V4": 29154489
+            },
+            "unichain": {
+              "Uniswap V4": 233340145
+            },
+            "polygon": {
+              "Uniswap V4": 1473947163
+            },
+            "arbitrum": {
+              "Uniswap V4": 925858026
+            },
+            "wc": {
+              "Uniswap V4": 8889381
+            },
+            "monad": {
+              "Uniswap V4": 410756228
+            },
+            "xlayer": {
+              "Uniswap V4": 417796869
+            },
+            "ethereum": {
+              "Uniswap V4": 13065671766
+            },
+            "bsc": {
+              "Uniswap V4": 1682216321
+            },
+            "base": {
+              "Uniswap V4": 6926808121
+            }
+          },
+          "defillamaId": "5690",
+          "name": "Uniswap V4",
+          "displayName": "Uniswap V4",
+          "module": "uniswap-v4",
+          "category": "Dexs",
+          "logo": "https://icons.llamao.fi/icons/protocols/uniswap-v4.png",
+          "chains": [
+            "Ethereum",
+            "OP Mainnet",
+            "Base",
+            "Arbitrum",
+            "Polygon",
+            "Blast",
+            "Zora",
+            "World Chain",
+            "Ink",
+            "Soneium",
+            "Avalanche",
+            "BSC",
+            "Unichain",
+            "Monad",
+            "X Layer"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/dexs/uniswap-v4.ts",
+          "methodology": {
+            "UserFees": "Swap fees paid by users.",
+            "Fees": "Swap fees paid by users.",
+            "Revenue": "Protocol makes no revenue.",
+            "ProtocolRevenue": "Protocol makes no revenue.",
+            "HoldersRevenue": "No revenue for UNI holders.",
+            "SupplySideRevenue": "All fees are distributed to LPs."
+          },
+          "parentProtocol": "parent#uniswap",
+          "slug": "uniswap-v4",
+          "linkedProtocols": [
+            "Uniswap",
+            "Uniswap V1",
+            "Uniswap V2",
+            "Uniswap V3",
+            "Uniswap V4",
+            "Uniswap Auctions"
+          ],
+          "id": "5690"
+        },
+        {
+          "total24h": 533206984,
+          "total48hto24h": 577854900,
+          "total7d": 4964653110,
+          "total14dto7d": 5750343310,
+          "total30d": 18949879993,
+          "total60dto30d": 16914139866,
+          "total1y": 554925211993,
+          "annualized1y": 554925211993,
+          "total7DaysAgo": 1062071962,
+          "total30DaysAgo": 497892070,
+          "totalAllTime": 909210715765,
+          "average1y": 1520343046.5561643,
+          "monthlyAverage1y": 46279242337.16964,
+          "change_1d": -7.73,
+          "change_7d": -49.8,
+          "change_1m": 7.09,
+          "change_7dover7d": -13.66,
+          "change_30dover30d": 12.04,
+          "breakdown24h": {
+            "polygon_zkevm": {
+              "PancakeSwap AMM V3": 2834
+            },
+            "bsc": {
+              "PancakeSwap AMM V3": 370434047
+            },
+            "linea": {
+              "PancakeSwap AMM V3": 24425
+            },
+            "era": {
+              "PancakeSwap AMM V3": 117461
+            },
+            "op_bnb": {
+              "PancakeSwap AMM V3": 8637
+            },
+            "solana": {
+              "PancakeSwap AMM V3": 32063958
+            },
+            "ethereum": {
+              "PancakeSwap AMM V3": 6291931
+            },
+            "monad": {
+              "PancakeSwap AMM V3": 3174422
+            },
+            "arbitrum": {
+              "PancakeSwap AMM V3": 8254041
+            },
+            "base": {
+              "PancakeSwap AMM V3": 112835228
+            }
+          },
+          "breakdown30d": {
+            "polygon_zkevm": {
+              "PancakeSwap AMM V3": 63334
+            },
+            "linea": {
+              "PancakeSwap AMM V3": 852369
+            },
+            "era": {
+              "PancakeSwap AMM V3": 2055301
+            },
+            "op_bnb": {
+              "PancakeSwap AMM V3": 240767
+            },
+            "solana": {
+              "PancakeSwap AMM V3": 886285465
+            },
+            "ethereum": {
+              "PancakeSwap AMM V3": 227768852
+            },
+            "bsc": {
+              "PancakeSwap AMM V3": 13363711401
+            },
+            "arbitrum": {
+              "PancakeSwap AMM V3": 349029297
+            },
+            "monad": {
+              "PancakeSwap AMM V3": 130089471
+            },
+            "base": {
+              "PancakeSwap AMM V3": 3989783736
+            }
+          },
+          "defillamaId": "2769",
+          "name": "PancakeSwap AMM V3",
+          "displayName": "PancakeSwap AMM V3",
+          "module": "pancakeswap-v3",
+          "category": "Dexs",
+          "logo": "https://icons.llamao.fi/icons/protocols/pancakeswap-amm-v3.jpg",
+          "chains": [
+            "BSC",
+            "Ethereum",
+            "Polygon zkEVM",
+            "ZKsync Era",
+            "Arbitrum",
+            "Linea",
+            "Base",
+            "opBNB",
+            "Solana",
+            "Monad"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/dexs/pancakeswap-v3.ts",
+          "methodology": {
+            "UserFees": "All trading fees paid by users",
+            "Fees": "Total trading fees - sum of LP fees and protocol fees. LP fees vary by pool type (0.25% for most pools, with some special pools having different rates). Protocol fees are 0.05% for most pools.",
+            "Revenue": "Pancakeswap collects amount of swap fees for Treasury and buy back CAKE.",
+            "ProtocolRevenue": "Swap fees collected by Pancakeswap - distribute to Treasury",
+            "HoldersRevenue": "Swap fees collected to buyback and burn CAKE: 15% fees in 0.01%, 0.05% tier pools, 23% fees in 0.25%, 1% tier pools",
+            "SupplySideRevenue": "Fees distributed to LPs"
+          },
+          "parentProtocol": "parent#pancakeswap",
+          "slug": "pancakeswap-amm-v3",
+          "linkedProtocols": [
+            "PancakeSwap",
+            "PancakeSwap AMM",
+            "PancakeSwap StableSwap",
+            "PancakeSwap AMM V1",
+            "PancakeSwap AMM V3",
+            "PancakeSwap Infinity",
+            "PancakeSwap Prediction",
+            "PancakeSwap Lottery"
+          ],
+          "breakdownMethodology": {
+            "Fees": {
+              "Token Swap Fees": "Total trading fees - sum of LP fees and protocol fees. LP fees vary by pool type (0.25% for most pools, with some special pools having different rates). Protocol fees are 0.05% for most pools"
+            },
+            "Revenue": {
+              "Swap Fees To Protocol": "Swap fees collected by Pancakeswap - distribute to Treasury",
+              "Swap Fees To Holders": "Swap fees collected to buyback and burn CAKE: 15% fees in 0.01%, 0.05% tier pools, 23% fees in 0.25%, 1% tier pools"
+            },
+            "ProtocolRevenue": {
+              "Swap Fees To Protocol": "Swap fees collected by Pancakeswap - distribute to Treasury"
+            },
+            "SupplySideRevenue": {
+              "Swap Fees To Liquidity Providers": "Fees distributed to LPs"
+            },
+            "HoldersRevenue": {
+              "Buy Back And Burn CAKE": "Swap fees collected to buyback and burn CAKE: 15% fees in 0.01%, 0.05% tier pools, 23% fees in 0.25%, 1% tier pools"
+            }
+          },
+          "id": "2769"
+        },
+        {
+          "total24h": 481312069,
+          "total48hto24h": 616611665,
+          "total7d": 4567442671,
+          "total14dto7d": 4698278592,
+          "total30d": 18079149812,
+          "total60dto30d": 12935836341,
+          "total1y": 187220733256,
+          "annualized1y": 187220733256,
+          "total7DaysAgo": 952571427,
+          "total30DaysAgo": 498271479,
+          "totalAllTime": 370032327361,
+          "average1y": 512933515.769863,
+          "monthlyAverage1y": 15613696220.03463,
+          "change_1d": -21.94,
+          "change_7d": -49.47,
+          "change_1m": -3.4,
+          "change_7dover7d": -2.78,
+          "change_30dover30d": 39.76,
+          "breakdown24h": {
+            "base": {
+              "Aerodrome Slipstream": 494869403
+            }
+          },
+          "breakdown30d": {
+            "base": {
+              "Aerodrome Slipstream": 18079149812
+            }
+          },
+          "defillamaId": "4524",
+          "name": "Aerodrome Slipstream",
+          "displayName": "Aerodrome Slipstream",
+          "module": "aerodrome-slipstream",
+          "category": "Dexs",
+          "logo": "https://icons.llamao.fi/icons/protocols/aerodrome.png",
+          "chains": [
+            "Base"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/dexs/aerodrome-slipstream",
+          "methodology": {
+            "UserFees": "Swap fees paid by users",
+            "Fees": "Total swap fees paid by traders. Per-pool fee rate read from CLPool.fee() (tickSpacing-based default, customizable) applied to each swap's input amount.",
+            "Revenue": "veAERO holders' share of swap fees, equal to HoldersRevenue (Aerodrome's zero-leak model routes all protocol revenue to voters).",
+            "ProtocolRevenue": "Percentage of swap fees going to treasury",
+            "HoldersRevenue": "Sum of (a) staked-LP fees and (b) the unstaked-LP rake (CLFactory.getUnstakedFee, default 10% of unstaked share), both routed into the gauge's CLPool.gaugeFees() accumulator. Measured on-chain as gaugeFees(toBlock) − gaugeFees(fromBlock) plus CollectFees event amounts (which drain the accumulator each Voter.distribute call).",
+            "SupplySideRevenue": "Unstaked LPs' net share of swap fees after the rake, accruing via the pool's feeGrowthGlobal. Computed per pool as Fees − HoldersRevenue.",
+            "BribesRevenue": "External bribes deposited to BribeVotingReward contracts (NotifyReward events filtered to slipstream GaugeFactories). Pre-launch tokens are priced via hardcoded conversion rates until each token's cutoff timestamp; afterwards DefiLlama spot pricing is used."
+          },
+          "parentProtocol": "parent#aerodrome",
+          "slug": "aerodrome-slipstream",
+          "linkedProtocols": [
+            "Aerodrome",
+            "Aerodrome V1",
+            "Aerodrome Slipstream"
+          ],
+          "breakdownMethodology": {
+            "Fees": {
+              "Swap fees": "All swap fees paid by traders on Aerodrome Slipstream pools."
+            },
+            "Revenue": {
+              "Staked-LP fees + unstaked-LP rake": "Both flow into the gauge's gaugeFees accumulator and are distributed to veAERO voters via FeeVotingReward."
+            },
+            "HoldersRevenue": {
+              "Staked-LP fees + unstaked-LP rake": "Both flow into the gauge's gaugeFees accumulator and are distributed to veAERO voters via FeeVotingReward."
+            },
+            "SupplySideRevenue": {
+              "Unstaked-LP fees": "Unstaked LPs' pro-rata share of swap fees, net of the unstaked-LP rake redirected to the gauge."
+            },
+            "BribesRevenue": {
+              "External bribes": "Token deposits to a pool's BribeVotingReward contract that veAERO voters claim by voting for the pool's gauge."
+            }
+          },
+          "id": "4524"
+        },
+        {
+          "total24h": 364829436,
+          "total48hto24h": 496645829,
+          "total7d": 4680876613,
+          "total14dto7d": 5110028937,
+          "total30d": 17255193366,
+          "total60dto30d": 15419630760,
+          "total1y": 538618709172,
+          "annualized1y": 538618709172,
+          "total7DaysAgo": 1208806157,
+          "total30DaysAgo": 534455798,
+          "totalAllTime": 2739377834740,
+          "average1y": 1475667696.3616438,
+          "monthlyAverage1y": 44919324677.248436,
+          "change_1d": -26.54,
+          "change_7d": -69.82,
+          "change_1m": -31.74,
+          "change_7dover7d": -8.4,
+          "change_30dover30d": 11.9,
+          "breakdown24h": {
+            "unichain": {
+              "Uniswap V3": 4926446
+            },
+            "mantle": {
+              "Uniswap V3": 364
+            },
+            "monad": {
+              "Uniswap V3": 2103821
+            },
+            "xdc": {
+              "Uniswap V3": 24198
+            },
+            "xdai": {
+              "Uniswap V3": 6226409
+            },
+            "linea": {
+              "Uniswap V3": 4942
+            },
+            "boba": {
+              "Uniswap V3": 21722
+            },
+            "sei": {
+              "Uniswap V3": 58873
+            },
+            "hemi": {
+              "Uniswap V3": 106
+            },
+            "etlk": {
+              "Uniswap V3": 29620
+            },
+            "goat": {
+              "Uniswap V3": 21613
+            },
+            "bob": {
+              "Uniswap V3": 2142
+            },
+            "rsk": {
+              "Uniswap V3": 161377
+            },
+            "polygon": {
+              "Uniswap V3": 14879627
+            },
+            "xlayer": {
+              "Uniswap V3": 27790138
+            },
+            "celo": {
+              "Uniswap V3": 2138772
+            },
+            "optimism": {
+              "Uniswap V3": 5169844
+            },
+            "base": {
+              "Uniswap V3": 103679587
+            },
+            "zora": {
+              "Uniswap V3": 0
+            },
+            "wc": {
+              "Uniswap V3": 0
+            },
+            "arbitrum": {
+              "Uniswap V3": 115809139
+            },
+            "blast": {
+              "Uniswap V3": 276
+            },
+            "nibiru": {
+              "Uniswap V3": 1393
+            },
+            "filecoin": {
+              "Uniswap V3": 71466
+            },
+            "plasma": {
+              "Uniswap V3": 1844902
+            },
+            "avax": {
+              "Uniswap V3": 9063300
+            },
+            "ethereum": {
+              "Uniswap V3": 44265344
+            },
+            "bsc": {
+              "Uniswap V3": 26534015
+            }
+          },
+          "breakdown30d": {
+            "polygon": {
+              "Uniswap V3": 693541366
+            },
+            "monad": {
+              "Uniswap V3": 68199126
+            },
+            "unichain": {
+              "Uniswap V3": 18402094
+            },
+            "linea": {
+              "Uniswap V3": 152490
+            },
+            "hemi": {
+              "Uniswap V3": 68875
+            },
+            "xdc": {
+              "Uniswap V3": 2696711
+            },
+            "bob": {
+              "Uniswap V3": 135269
+            },
+            "boba": {
+              "Uniswap V3": 884360
+            },
+            "etlk": {
+              "Uniswap V3": 9051172
+            },
+            "goat": {
+              "Uniswap V3": 1041236
+            },
+            "xlayer": {
+              "Uniswap V3": 94959523
+            },
+            "rsk": {
+              "Uniswap V3": 14371034
+            },
+            "optimism": {
+              "Uniswap V3": 208405101
+            },
+            "xdai": {
+              "Uniswap V3": 125173799
+            },
+            "wc": {
+              "Uniswap V3": 0
+            },
+            "base": {
+              "Uniswap V3": 3202959634
+            },
+            "zora": {
+              "Uniswap V3": 0
+            },
+            "arbitrum": {
+              "Uniswap V3": 3821402307
+            },
+            "sei": {
+              "Uniswap V3": 2013003
+            },
+            "blast": {
+              "Uniswap V3": 19753
+            },
+            "mantle": {
+              "Uniswap V3": 19497
+            },
+            "filecoin": {
+              "Uniswap V3": 2445275
+            },
+            "nibiru": {
+              "Uniswap V3": 39174
+            },
+            "telos": {
+              "Uniswap V3": 1452
+            },
+            "celo": {
+              "Uniswap V3": 55839353
+            },
+            "avax": {
+              "Uniswap V3": 200557365
+            },
+            "plasma": {
+              "Uniswap V3": 44134117
+            },
+            "ethereum": {
+              "Uniswap V3": 7497889740
+            },
+            "bsc": {
+              "Uniswap V3": 1190790540
+            }
+          },
+          "defillamaId": "2198",
+          "name": "Uniswap V3",
+          "displayName": "Uniswap V3",
+          "module": "uniswap-v3",
+          "category": "Dexs",
+          "logo": "https://icons.llamao.fi/icons/protocols/uniswap-v3.png",
+          "chains": [
+            "Ethereum",
+            "Arbitrum",
+            "OP Mainnet",
+            "Polygon",
+            "Celo",
+            "ZKsync Era",
+            "Sei",
+            "Taiko",
+            "Scroll",
+            "Rootstock",
+            "Filecoin",
+            "Boba",
+            "Moonbeam",
+            "Manta",
+            "Mantle",
+            "Linea",
+            "BSC",
+            "Avalanche",
+            "Base",
+            "Polygon zkEVM",
+            "Blast",
+            "Gnosis",
+            "BOB",
+            "Lisk",
+            "Corn",
+            "Unichain",
+            "Hemi",
+            "Saga",
+            "LightLink",
+            "GOAT",
+            "XDC",
+            "Lens",
+            "Telos",
+            "World Chain",
+            "Nibiru",
+            "Plasma",
+            "Monad",
+            "Etherlink",
+            "Sonic",
+            "X Layer",
+            "Zora"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/dexs/uniswap-v3.ts",
+          "methodology": {
+            "UserFees": "User pays fees on each swap.",
+            "Fees": "Swap fees from paid by users.",
+            "Revenue": "From 28 Dec 2025, a portion of fees a collected to buy back and burn UNI on Ethereum, From 8 Mar 2026, on Optimism, Arbitrum, Base, WC, Zora, XLayer, From 2 Jun 2026, on Polygon, BSC, Celo.",
+            "ProtocolRevenue": "Protocol make no revenue.",
+            "HoldersRevenue": "From 28 Dec 2025, a portion of fees a collected to buy back and burn UNI on Ethereum, From 8 Mar 2026, on Optimism, Arbitrum, Base, WC, Zora, XLayer, From 2 Jun 2026, on Polygon, BSC, Celo.",
+            "SupplySideRevenue": "Fees distributed to LPs post protocol fee collection"
+          },
+          "parentProtocol": "parent#uniswap",
+          "slug": "uniswap-v3",
+          "linkedProtocols": [
+            "Uniswap",
+            "Uniswap V1",
+            "Uniswap V2",
+            "Uniswap V3",
+            "Uniswap V4",
+            "Uniswap Auctions"
+          ],
+          "id": "2198"
+        },
+        {
+          "total24h": 282414187,
+          "total48hto24h": 212754741,
+          "total7d": 1579188696,
+          "total14dto7d": 1494386541,
+          "total30d": 6196031088,
+          "total60dto30d": 5682286542,
+          "total1y": 36497666413,
+          "annualized1y": 36497666413,
+          "total7DaysAgo": 247743269,
+          "total30DaysAgo": 168037392,
+          "totalAllTime": 38266649707,
+          "average1y": 99993606.6109589,
+          "monthlyAverage1y": 3043805385.2375894,
+          "change_1d": 32.74,
+          "change_7d": 13.99,
+          "change_1m": 68.07,
+          "change_7dover7d": 5.67,
+          "change_30dover30d": 9.04,
+          "breakdown24h": {
+            "off_chain": {
+              "Kalshi": 282414187
+            }
+          },
+          "breakdown30d": {
+            "off_chain": {
+              "Kalshi": 6196031088
+            }
+          },
+          "defillamaId": "6689",
+          "name": "Kalshi",
+          "displayName": "Kalshi",
+          "module": "kalshi",
+          "category": "Prediction Market",
+          "logo": "https://icons.llamao.fi/icons/protocols/kalshi.jpg",
+          "chains": [
+            "Off Chain"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/dexs/kalshi.ts",
+          "methodology": {},
+          "slug": "kalshi",
+          "id": "6689"
+        }
+      ]
+    },
+    "fees": {
+      "total_24h_fees": 54750764.0,
+      "total_24h_revenue": 0.0,
+      "top_earners": [
+        {
+          "total24h": 16389130,
+          "total48hto24h": 16390683,
+          "total7d": 114657351,
+          "total14dto7d": 114694435,
+          "total30d": 492158305,
+          "total60dto30d": 491359062,
+          "total1y": 5941136464,
+          "annualized1y": 5941136464,
+          "total7DaysAgo": 16395938,
+          "total30DaysAgo": 16506101,
+          "totalAllTime": 18007505465,
+          "average1y": 16277086.202739727,
+          "monthlyAverage1y": 495474504.0113973,
+          "change_1d": -0.01,
+          "change_7d": -0.04,
+          "change_1m": -0.71,
+          "change_7dover7d": -0.03,
+          "change_30dover30d": 0.16,
+          "breakdown24h": {
+            "off_chain": {
+              "Tether": 16389130
+            }
+          },
+          "breakdown30d": {
+            "off_chain": {
+              "Tether": 492158305
+            }
+          },
+          "defillamaId": "5009",
+          "name": "Tether",
+          "displayName": "Tether",
+          "module": "tether",
+          "category": "Stablecoin Issuer",
+          "logo": "https://icons.llamao.fi/icons/protocols/tether.png",
+          "chains": [
+            "Off Chain"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/fees/tether",
+          "methodology": {
+            "Fees": "All yields from USDT backing assets investments, mostly US Treasury Bills.",
+            "Revenue": "All yields from USDT backing assets investments, mostly US Treasury Bills collected by Tether.",
+            "ProtocolRevenue": "All yields from USDT backing assets investments, mostly US Treasury Bills collected by Tether."
+          },
+          "slug": "tether",
+          "breakdownMethodology": {
+            "Fees": {
+              "Assets Yields": "All yields from USDT backing assets investments, mostly US Treasury Bills."
+            },
+            "Revenue": {
+              "Assets Yields": "All yields from USDT backing assets investments, mostly US Treasury Bills collected by Tether."
+            },
+            "ProtocolRevenue": {
+              "Assets Yields": "All yields from USDT backing assets investments, mostly US Treasury Bills collected by Tether."
+            }
+          },
+          "id": "5009"
+        },
+        {
+          "total24h": 6395808,
+          "total48hto24h": 6403139,
+          "total7d": 45036967,
+          "total14dto7d": 45048963,
+          "total30d": 193561824,
+          "total60dto30d": 198442831,
+          "total1y": 2360191970,
+          "annualized1y": 2360191970,
+          "total7DaysAgo": 6460532,
+          "total30DaysAgo": 6559783,
+          "totalAllTime": 6778176402,
+          "average1y": 6466279.369863014,
+          "monthlyAverage1y": 196833544.01863015,
+          "change_1d": -0.11,
+          "change_7d": -1,
+          "change_1m": -2.5,
+          "change_7dover7d": -0.03,
+          "change_30dover30d": -2.46,
+          "breakdown24h": {
+            "off_chain": {
+              "Circle USDC": 6395808
+            }
+          },
+          "breakdown30d": {
+            "off_chain": {
+              "Circle USDC": 193561824
+            }
+          },
+          "defillamaId": "5008",
+          "name": "Circle USDC",
+          "displayName": "Circle USDC",
+          "module": "circle",
+          "category": "Stablecoin Issuer",
+          "logo": "https://icons.llamao.fi/icons/protocols/circle-usdc.png",
+          "chains": [
+            "Ethereum",
+            "Off Chain"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/fees/circle.ts",
+          "methodology": {
+            "Fees": "All yields from USDC backing cash-equivalent assets, and US Treasury Bills.",
+            "Revenue": "All yields from USDC backing cash-equivalent assets, and US Treasury Bills collected by Circle.",
+            "ProtocolRevenue": "All yields from USDC backing cash-equivalent assets, and US Treasury Bills collected by Circle."
+          },
+          "parentProtocol": "parent#circle",
+          "slug": "circle-usdc",
+          "linkedProtocols": [
+            "Circle",
+            "Circle USYC",
+            "Circle USDC",
+            "Circle CCTP"
+          ],
+          "breakdownMethodology": {
+            "Fees": {
+              "Assets Yields": "All yields from USDC backing cash-equivalent assets, and US Treasury Bills."
+            },
+            "Revenue": {
+              "Assets Yields": "All yields from USDC backing cash-equivalent assets, and US Treasury Bills collected by Circle."
+            },
+            "ProtocolRevenue": {
+              "Assets Yields": "All yields from USDC backing cash-equivalent assets, and US Treasury Bills collected by Circle."
+            }
+          },
+          "hasLabelBreakdown": true,
+          "id": "5008"
+        },
+        {
+          "total24h": 2361902,
+          "total48hto24h": 2707459,
+          "total7d": 21275977,
+          "total14dto7d": 22171821,
+          "total30d": 76083580,
+          "total60dto30d": 55847833,
+          "total1y": 998007763,
+          "annualized1y": 998007763,
+          "total7DaysAgo": 5169543,
+          "total30DaysAgo": 1858672,
+          "totalAllTime": 1271352979,
+          "average1y": 2734267.8438356165,
+          "monthlyAverage1y": 83231113.16635618,
+          "change_1d": -12.76,
+          "change_7d": -54.31,
+          "change_1m": 27.07,
+          "change_7dover7d": -4.04,
+          "change_30dover30d": 36.23,
+          "breakdown24h": {
+            "hyperliquid": {
+              "Hyperliquid Perps": 2361902
+            }
+          },
+          "breakdown30d": {
+            "hyperliquid": {
+              "Hyperliquid Perps": 76083580
+            }
+          },
+          "defillamaId": "5507",
+          "name": "Hyperliquid Perps",
+          "displayName": "Hyperliquid Perps",
+          "module": "hyperliquid-perp",
+          "category": "Derivatives",
+          "logo": "https://icons.llamao.fi/icons/protocols/hyperliquid.png",
+          "chains": [
+            "Hyperliquid L1"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/dexs/hyperliquid-perp",
+          "methodology": {
+            "UserFees": "Fees paid by users",
+            "Fees": "Include perps trading fees on crypto and HIP-3 deployed markets + builders fees, excluding all spot fees.",
+            "Revenue": "99% of fees go to Assistance Fund for buying HYPE tokens, excluding builders fees.",
+            "ProtocolRevenue": "Protocol doesn't keep any fees.",
+            "HoldersRevenue": "99% of fees go to Assistance Fund for buying HYPE tokens, excluding builders fees.",
+            "SupplySideRevenue": "1% of fees go to HLP Vault suppliers, before 30 Aug 2025 it was 3% + fees for builders.",
+            "Volume": "Track trading volume on all perps markets (including HIP-3 markets), excluding all spot markets volume."
+          },
+          "parentProtocol": "parent#hyperliquid",
+          "slug": "hyperliquid-perps",
+          "linkedProtocols": [
+            "Hyperliquid",
+            "Hyperliquid HLP",
+            "Hyperliquid Perps",
+            "Hyperliquid Spot Orderbook"
+          ],
+          "breakdownMethodology": {
+            "Fees": {
+              "Perp Fees": "Perp trade fees collected as revenue, excluding spot fee.",
+              "Builder Code Fees": "Fees added on top by other platforms building on top of Hyperliquid.",
+              "Priority Fees": "Fees from priority orders paid."
+            },
+            "Revenue": {
+              "Perp Fees": "99% of perp trade fees, excluding spot fees and builders fees.",
+              "Priority Fees": "Fees from priority orders paid."
+            },
+            "SupplySideRevenue": {
+              "Builder Code Distribution": "All extra fees added on top by builders are fully passed down to these platforms.",
+              "HLP": "1% of the perp trade fees go to HLP vault (used to be 3% before 30 Aug 2025)",
+              "HIP-3 Deployer Distribution": "Fees are distributed back to HIP-3 markets deployers."
+            },
+            "HoldersRevenue": {
+              "Token Buy Back": "99% of perp trade fees (excluding spot fees and builders fees) for buy back HYPE tokens.",
+              "HYPE Burn From Priority Fees": "All prioroty fees will be used to buy and burn HYPE."
+            }
+          },
+          "hasLabelBreakdown": true,
+          "id": "5507"
+        },
+        {
+          "total24h": 2194066,
+          "total48hto24h": 2073964,
+          "total7d": 14072646,
+          "total14dto7d": 13456922,
+          "total30d": 60817845,
+          "total60dto30d": 66216858,
+          "total1y": 452932620,
+          "annualized1y": 452932620,
+          "total7DaysAgo": 1976351,
+          "total30DaysAgo": 2113329,
+          "totalAllTime": 460333289,
+          "average1y": 1240911.2876712328,
+          "monthlyAverage1y": 37773339.59671233,
+          "change_1d": 5.79,
+          "change_7d": 11.02,
+          "change_1m": 3.82,
+          "change_7dover7d": 4.58,
+          "change_30dover30d": -8.15,
+          "breakdown24h": {
+            "canton": {
+              "Canton": 2194066
+            }
+          },
+          "breakdown30d": {
+            "canton": {
+              "Canton": 60817845
+            }
+          },
+          "defillamaId": "chain#canton",
+          "name": "Canton",
+          "displayName": "Canton",
+          "module": "canton",
+          "category": "Chain",
+          "logo": "https://icons.llamao.fi/icons/chains/rsz_canton.jpg",
+          "chains": [
+            "Canton"
+          ],
+          "protocolType": "chain",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/fees/canton.ts",
+          "methodology": {
+            "UserFees": "Gas fees paid by users",
+            "Fees": "Includes traffic purchase, preapproval burn, preapproval renew burn, setup burn, dust expire, holding fee, sender change fees",
+            "Revenue": "All the collected fees (traffic purchase, preapproval burn, preapproval renew burn, setup burn, dust expire, holding fee, sender change fees) are burnt",
+            "HoldersRevenue": "All the collected fees (traffic purchase, preapproval burn, preapproval renew burn, setup burn, dust expire, holding fee, sender change fees) are burned"
+          },
+          "slug": "canton",
+          "breakdownMethodology": {
+            "Fees": {
+              "Traffic Purchase": "Canton tokens burned to purchase synchronizer bandwidth.",
+              "Preapproval Burn": "Canton tokens burned to create a standing authorization for receiving CC transfers without being online.",
+              "Preapproval Renew Burn": "Canton tokens burned to renew an expiring preapproval before it lapses.",
+              "Setup Burn": "Canton tokens burned to onboard an external party onto the network.",
+              "Dust Expire": "Near-zero Amulets whose holding fees exceeded their value, garbage-collected by super validators and burned.",
+              "Holding Fee": "Per-round fee accrued on Amulet UTXOs, charged upon consumption (zero after CIP-0078, Sep 2025).",
+              "Sender Change Fee": "Fee for creating the change Amulet sent back to the sender in a transfer (zero after CIP-0078, Sep 2025)."
+            },
+            "Revenue": {
+              "Traffic Purchase": "Canton tokens burned to purchase synchronizer bandwidth.",
+              "Preapproval Burn": "Canton tokens burned to create a standing authorization for receiving CC transfers without being online.",
+              "Preapproval Renew Burn": "Canton tokens burned to renew an expiring preapproval before it lapses.",
+              "Setup Burn": "Canton tokens burned to onboard an external party onto the network.",
+              "Dust Expire": "Near-zero Amulets whose holding fees exceeded their value, garbage-collected by super validators and burned.",
+              "Holding Fee": "Per-round fee accrued on Amulet UTXOs, charged upon consumption (zero after CIP-0078, Sep 2025).",
+              "Sender Change Fee": "Fee for creating the change Amulet sent back to the sender in a transfer (zero after CIP-0078, Sep 2025)."
+            },
+            "HoldersRevenue": {
+              "Traffic Purchase": "Canton tokens burned to purchase synchronizer bandwidth.",
+              "Preapproval Burn": "Canton tokens burned to create a standing authorization for receiving CC transfers without being online.",
+              "Preapproval Renew Burn": "Canton tokens burned to renew an expiring preapproval before it lapses.",
+              "Setup Burn": "Canton tokens burned to onboard an external party onto the network.",
+              "Dust Expire": "Near-zero Amulets whose holding fees exceeded their value, garbage-collected by super validators and burned.",
+              "Holding Fee": "Per-round fee accrued on Amulet UTXOs, charged upon consumption (zero after CIP-0078, Sep 2025).",
+              "Sender Change Fee": "Fee for creating the change Amulet sent back to the sender in a transfer (zero after CIP-0078, Sep 2025)."
+            }
+          },
+          "id": "chain#canton"
+        },
+        {
+          "total24h": 2017260,
+          "total48hto24h": 9,
+          "total7d": 3407366,
+          "total14dto7d": 4106478,
+          "total30d": 19115895,
+          "total60dto30d": 14581242,
+          "total1y": 366279197,
+          "annualized1y": 366279197,
+          "total7DaysAgo": 4080908,
+          "total30DaysAgo": 1017,
+          "totalAllTime": 992753171,
+          "average1y": 1003504.6493150685,
+          "monthlyAverage1y": 30546681.525150687,
+          "change_1d": 22413900,
+          "change_7d": -50.57,
+          "change_1m": 198253.98,
+          "change_7dover7d": -17.02,
+          "change_30dover30d": 31.1,
+          "breakdown24h": {
+            "ethereum": {
+              "Ethena USDe": 3403681
+            }
+          },
+          "breakdown30d": {
+            "ethereum": {
+              "Ethena USDe": 19115895
+            }
+          },
+          "defillamaId": "4133",
+          "name": "Ethena USDe",
+          "displayName": "Ethena USDe",
+          "module": "ethena",
+          "category": "Basis Trading",
+          "logo": "https://icons.llamao.fi/icons/protocols/ethena-usde.png",
+          "chains": [
+            "Ethereum"
+          ],
+          "protocolType": "protocol",
+          "methodologyURL": "https://github.com/DefiLlama/dimension-adapters/blob/master/fees/ethena.ts",
+          "methodology": {
+            "Fees": "Staking rewards + yield distribution + mint fees + extra fees",
+            "UserFees": "Users pay fees when minting USDe using USDT, USDC or USDtb",
+            "Revenue": "Mint Fees and staking rewards portion to Reserve Fund",
+            "SupplySideRevenue": "Mint Fees and staking rewards distributed to suppliers"
+          },
+          "parentProtocol": "parent#ethena",
+          "slug": "ethena-usde",
+          "linkedProtocols": [
+            "Ethena",
+            "Ethena USDe"
+          ],
+          "breakdownMethodology": {
+            "Fees": {
+              "Mint Fees": "Users pay fees when minting USDe using USDT, USDC or USDtb.",
+              "Reserve Fund": "Staking rewards portion to Reserve Fund.",
+              "sUSDe Staking Rewards": "Staking rewards distributed to sUSDe stakers.",
+              "Extra Rewards": "Extra rewards distributed to sUSDe stakers.",
+              "Aave Liquidation Fees": "Aave liquidation fees distributed to sUSDe stakers."
+            },
+            "Revenue": {
+              "Mint Fees": "Users pay fees when minting USDe using USDT, USDC or USDtb.",
+              "Reserve Fund": "Staking rewards portion to Reserve Fund."
+            },
+            "SupplySideRevenue": {
+              "sUSDe Staking Rewards": "Staking rewards distributed to sUSDe stakers.",
+              "Extra Rewards": "Extra rewards distributed to sUSDe stakers.",
+              "Aave Liquidation Fees": "Aave liquidation fees distributed to sUSDe stakers."
+            }
+          },
+          "hasLabelBreakdown": true,
+          "id": "4133"
+        }
+      ]
+    },
+    "options": {
+      "notional_volume_24h": 0.0,
+      "premium_volume_24h": 0.0,
+      "top_protocols": []
+    }
+  }
+}

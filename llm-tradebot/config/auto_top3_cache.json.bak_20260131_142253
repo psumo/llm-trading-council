@@ -1,0 +1,199 @@
+{
+  "timestamp": "2026-01-22T00:54:29.908361",
+  "valid_until": "2026-01-22T06:54:29.908361",
+  "lookback_hours": 24,
+  "selection_method": "two_stage",
+  "top3": [
+    {
+      "symbol": "TAOUSDT",
+      "total_return": 0.06068027477664146,
+      "sharpe_ratio": -0.06449699585807914,
+      "win_rate": 50.0,
+      "max_drawdown": 0.2825931372608809,
+      "trades": 2,
+      "profit_factor": 1.5525283599062625,
+      "composite_score": 33.36
+    },
+    {
+      "symbol": "ROSEUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "FILUSDT",
+      "total_return": -0.35242384294504514,
+      "sharpe_ratio": -2.0785248323676675,
+      "win_rate": 0.0,
+      "max_drawdown": 0.35242384294504514,
+      "trades": 2,
+      "profit_factor": 0.0,
+      "composite_score": 8.48
+    }
+  ],
+  "top5": [
+    "FILUSDT",
+    "TAOUSDT",
+    "LINKUSDT",
+    "ROSEUSDT",
+    "ICPUSDT"
+  ],
+  "stage1_results": [
+    {
+      "symbol": "TAOUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "LINKUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "ROSEUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "ICPUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "NEARUSDT",
+      "total_return": -0.1763674488575998,
+      "sharpe_ratio": -1.3697506710061684,
+      "win_rate": 0.0,
+      "max_drawdown": 0.1763674488575998,
+      "trades": 1,
+      "profit_factor": 0.0,
+      "composite_score": 11.74
+    },
+    {
+      "symbol": "RENDERUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "FILUSDT",
+      "total_return": 0.23746653730800973,
+      "sharpe_ratio": 1.2250563225187596,
+      "win_rate": 100.0,
+      "max_drawdown": 0.025207199999986187,
+      "trades": 1,
+      "profit_factor": Infinity,
+      "composite_score": 73.63
+    },
+    {
+      "symbol": "WLDUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "FETUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "VETUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    }
+  ],
+  "stage2_results": [
+    {
+      "symbol": "FILUSDT",
+      "total_return": -0.35242384294504514,
+      "sharpe_ratio": -2.0785248323676675,
+      "win_rate": 0.0,
+      "max_drawdown": 0.35242384294504514,
+      "trades": 2,
+      "profit_factor": 0.0,
+      "composite_score": 8.48
+    },
+    {
+      "symbol": "TAOUSDT",
+      "total_return": 0.06068027477664146,
+      "sharpe_ratio": -0.06449699585807914,
+      "win_rate": 50.0,
+      "max_drawdown": 0.2825931372608809,
+      "trades": 2,
+      "profit_factor": 1.5525283599062625,
+      "composite_score": 33.36
+    },
+    {
+      "symbol": "LINKUSDT",
+      "total_return": -0.42578067381480644,
+      "sharpe_ratio": -2.6429116926812593,
+      "win_rate": 0.0,
+      "max_drawdown": 0.42578067381480644,
+      "trades": 2,
+      "profit_factor": 0.0,
+      "composite_score": 6.29
+    },
+    {
+      "symbol": "ROSEUSDT",
+      "total_return": 0.0,
+      "sharpe_ratio": 0.0,
+      "win_rate": 0.0,
+      "max_drawdown": 0.0,
+      "trades": 0,
+      "profit_factor": 0.0,
+      "composite_score": 15.0
+    },
+    {
+      "symbol": "ICPUSDT",
+      "total_return": -0.42578067381478835,
+      "sharpe_ratio": -1.9973502616455916,
+      "win_rate": 0.0,
+      "max_drawdown": 0.42578067381478835,
+      "trades": 2,
+      "profit_factor": 0.0,
+      "composite_score": 6.29
+    }
+  ]
+}

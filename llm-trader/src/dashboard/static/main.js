@@ -1,0 +1,323 @@
+import { initPerformanceChart, updatePerformanceData } from './modules/performance_chart.js?v=4.5';
+import { initSynapseNetwork, updateSynapses } from './modules/synapse_viewer.js?v=4.5';
+import { updateLogs, updatePromptTab, updateResponseTab } from './modules/log_viewer.js?v=4.5';
+import { updateVisuals } from './modules/visuals.js?v=4.5';
+import { initVectorPanel, updateVectorData } from './modules/vector_panel.js?v=4.6';
+import { initFullscreen } from './modules/fullscreen.js?v=4.5';
+import { initWebSocket, startCountdownLoop } from './modules/websocket.js?v=4.6';
+import { initPositionPanel, updatePositionData } from './modules/position_panel.js?v=4.6';
+import { initUI } from './modules/ui.js?v=4.5';
+import { initStatisticsPanel, updateStatisticsData } from './modules/statistics_panel.js?v=4.5';
+import { initNewsPanel, updateNewsData } from './modules/news_panel.js?v=4.5';
+import { initPostMortemPanel, updatePostMortemData } from './modules/post_mortem_panel.js?v=1.1';
+
+const state = {
+    isConnected: false,
+    fastPollInterval: 10000,
+    slowPollInterval: 30000,
+    lastUpdateTime: null
+};
+
+function formatCost(cost) {
+    if (cost === 0 || cost === null || cost === undefined) return '$0.00';
+    if (cost < 0.0001) return `$${cost.toFixed(8)}`;
+    if (cost < 0.01) return `$${cost.toFixed(6)}`;
+    if (cost < 1) return `$${cost.toFixed(4)}`;
+    return `$${cost.toFixed(2)}`;
+}
+
+function formatExecutionPolicy(policy, prefix) {
+    if (!policy) return '--';
+    const type = policy[`${prefix}_type`] || 'unknown';
+    const interval = policy[`${prefix}_check_interval`] || 'unknown';
+    return `${type} / ${interval}`;
+}
+
+function updateRiskPolicyDisplay(exitManagement) {
+    const slEl = document.getElementById('overview-sl-policy');
+    const tpEl = document.getElementById('overview-tp-policy');
+    if (slEl) slEl.textContent = `SL: ${formatExecutionPolicy(exitManagement, 'stop_loss')}`;
+    if (tpEl) tpEl.textContent = `TP: ${formatExecutionPolicy(exitManagement, 'take_profit')}`;
+}
+
+function updateLifecycleDisplay(lifecycle) {
+    const badge = document.getElementById('brain-lifecycle-badge');
+    if (!badge || !lifecycle) return;
+    const status = lifecycle.status || 'idle';
+    const labels = {
+        idle: 'Brain idle',
+        updating: 'Brain updating',
+        rebuilt: 'Brain rebuilt',
+        error: 'Brain error'
+    };
+    badge.textContent = labels[status] || `Brain ${status}`;
+    badge.title = lifecycle.message || '';
+    badge.className = `lifecycle-badge ${status}`;
+}
+
+async function fetchCosts() {
+    try {
+        const response = await fetch('/api/monitor/costs');
+        const data = await response.json();
+        updateCostDisplay(data);
+    } catch (e) {
+        console.error("Failed to fetch costs", e);
+    }
+}
+
+function updateCostDisplay(data) {
+    const costs = data.costs_by_provider || {};
+    const total = data.total_session_cost || 0;
+    const orCost = costs.openrouter || 0;
+    const googleCost = costs.google || 0;
+
+    document.getElementById('overview-cost').textContent = formatCost(total);
+}
+
+
+
+
+
+async function fetchBrainStatus() {
+    try {
+        const response = await fetch('/api/brain/status');
+        const data = await response.json();
+        const connStatus = document.getElementById('connection-status');
+        const statusDot = document.querySelector('.status-dot');
+
+        if (connStatus) {
+            connStatus.textContent = 'Connected';
+            connStatus.classList.remove('status-text', 'disconnected');
+            connStatus.classList.add('status-text', 'connected');
+            connStatus.style.color = ''; // Clear inline style if present
+        }
+
+        if (statusDot) {
+            statusDot.classList.remove('disconnected');
+            statusDot.classList.add('connected');
+        }
+
+        updateRiskPolicyDisplay(data.exit_management);
+        updateLifecycleDisplay(data.brain_lifecycle);
+
+        const trendEl = document.getElementById('overview-trend');
+        if (trendEl) {
+            trendEl.textContent = data.trend || '--';
+            if (data.trend === 'BULLISH') {
+                trendEl.className = 'value start-green';
+            } else if (data.trend === 'BEARISH') {
+                trendEl.className = 'value start-red';
+            } else {
+                trendEl.className = 'value'; // default color
+            }
+        }
+
+        const confEl = document.getElementById('overview-conf');
+        if (confEl) {
+            confEl.textContent = data.confidence ? `${data.confidence}%` : '--%';
+        }
+
+        const actionEl = document.getElementById('overview-action');
+        if (actionEl) {
+            actionEl.textContent = data.action || 'WAITING';
+        }
+
+        state.lastUpdateTime = new Date();
+        updateLastUpdated();
+    } catch (e) {
+        const connStatus = document.getElementById('connection-status');
+        const statusDot = document.querySelector('.status-dot');
+
+        if (connStatus) {
+            connStatus.textContent = 'Disconnected';
+            connStatus.classList.remove('status-text', 'connected');
+            connStatus.classList.add('status-text', 'disconnected');
+            connStatus.style.color = ''; // Clear inline style if present
+        }
+
+        if (statusDot) {
+            statusDot.classList.remove('connected');
+            statusDot.classList.add('disconnected');
+        }
+    }
+}
+
+async function fetchRules() {
+    try {
+        const response = await fetch('/api/brain/rules');
+        const rules = await response.json();
+
+        // Direct update to Rules Count KPI
+        const countEl = document.getElementById('overview-rules-count');
+        const hintEl = document.getElementById('overview-rules-hint');
+
+        if (countEl) {
+            const count = rules.length;
+            countEl.textContent = count;
+
+            if (hintEl) {
+                hintEl.style.display = count > 0 ? 'none' : 'block';
+            }
+        }
+
+    } catch (e) {
+        console.error("Failed to fetch rules", e);
+    }
+}
+
+function updateLastUpdated() {
+    const el = document.getElementById('last-updated');
+    if (el && state.lastUpdateTime) {
+        el.textContent = `Updated: ${new Intl.DateTimeFormat(navigator.language, { timeStyle: 'medium' }).format(state.lastUpdateTime)}`;
+    }
+}
+
+function togglePanelMinimize(panelId) {
+    const panel = document.getElementById(panelId);
+    if (panel) {
+        const isMinimized = panel.classList.toggle('minimized');
+        const btn = panel.querySelector('.toolbar-btn[title="Minimize"], .toolbar-btn[title="Expand"]');
+        if (btn) {
+            btn.innerHTML = isMinimized
+                ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+            btn.title = isMinimized ? 'Expand' : 'Minimize';
+            btn.setAttribute('aria-expanded', String(!isMinimized));
+
+            const titleEl = panel.querySelector('h3');
+            const panelName = titleEl ? titleEl.textContent.toLowerCase() : 'panel';
+            btn.setAttribute('aria-label', isMinimized ? `Expand ${panelName}` : `Minimize ${panelName}`);
+        }
+    }
+}
+
+async function updateAll() {
+    await updateFastLane();
+    await updateSlowLane();
+}
+
+async function refreshBrainPanels() {
+    try {
+        await fetch('/api/brain/refresh', { method: 'POST' });
+    } catch (e) {
+        console.warn('Failed to request brain refresh', e);
+    }
+    await updateFastLane();
+    await updateSlowLane();
+}
+
+async function updateFastLane() {
+    await fetchBrainStatus();
+    await updatePositionData();
+}
+
+async function updateSlowLane() {
+    await fetchRules();
+    await fetchCosts();
+    await updatePerformanceData();
+    await updateSynapses();
+    await updateLogs();
+    await updateVisuals();
+    await updateVectorData();
+    await updateStatisticsData();
+    await updateNewsData();
+    await updatePostMortemData();
+}
+
+function initApp() {
+    console.log('Initializing Dashboard App...');
+
+    window.updateAll = updateAll;
+    window.refreshBrainPanels = refreshBrainPanels;
+
+    window.togglePanelMinimize = togglePanelMinimize;
+
+    // Mobile menu is fully managed by setupMobileMenu() in modules/ui.js
+
+    // Event listeners for static buttons — independent of panel inits
+    try {
+        const btnMinimize = document.getElementById('btn-minimize-visuals');
+        if (btnMinimize) {
+            btnMinimize.addEventListener('click', () => togglePanelMinimize('panel-visuals'));
+        }
+    } catch (e) { console.error('btn-minimize-visuals setup failed:', e); }
+
+    try {
+        const btnLightbox = document.getElementById('btn-lightbox-visuals');
+        if (btnLightbox) {
+            btnLightbox.addEventListener('click', () => {
+                const img = document.getElementById('analysis-chart');
+                if (img && img.src && window.openLightbox) window.openLightbox(img.src);
+            });
+        }
+    } catch (e) { console.error('btn-lightbox-visuals setup failed:', e); }
+
+    try {
+        const btnCopyPrompt = document.getElementById('btn-copy-prompt');
+        if (btnCopyPrompt && window.copyPromptContent) {
+            btnCopyPrompt.addEventListener('click', window.copyPromptContent);
+        }
+    } catch (e) { console.error('btn-copy-prompt setup failed:', e); }
+
+    try {
+        const btnCopyResponse = document.getElementById('btn-copy-response');
+        if (btnCopyResponse && window.copyResponseContent) {
+            btnCopyResponse.addEventListener('click', window.copyResponseContent);
+        }
+    } catch (e) { console.error('btn-copy-response setup failed:', e); }
+
+    // Panel initializers — each isolated so one failure doesn't cascade
+    const _safeInit = (name, fn) => { try { fn(); } catch (e) { console.error(name + ' init failed:', e); } };
+
+    _safeInit('initPerformanceChart', initPerformanceChart);
+    _safeInit('initSynapseNetwork', initSynapseNetwork);
+    try { initVectorPanel(); } catch (e) { console.error('initVectorPanel failed:', e); }
+    _safeInit('initFullscreen', initFullscreen);
+    _safeInit('initPositionPanel', initPositionPanel);
+    try { initStatisticsPanel(); } catch (e) { console.error('initStatisticsPanel failed:', e); }
+    try { initNewsPanel(); } catch (e) { console.error('initNewsPanel failed:', e); }
+    try { initPostMortemPanel(); } catch (e) { console.error('initPostMortemPanel failed:', e); }
+    _safeInit('initWebSocket', initWebSocket);
+    _safeInit('initUI', initUI);
+    _safeInit('startCountdownLoop', startCountdownLoop);
+
+    // Initial update
+    try { updateAll(); } catch (e) { console.error('updateAll failed:', e); }
+
+    // Start polling lanes: fast for critical status/position, slow for heavier panels.
+    setInterval(updateFastLane, state.fastPollInterval);
+    setInterval(updateSlowLane, state.slowPollInterval);
+
+    // Listen for WS analysis complete
+    document.addEventListener('analysis-complete', () => {
+        console.log('Analysis complete, refreshing...');
+        updateFastLane();
+        updateSlowLane();
+    });
+
+    document.addEventListener('brain-lifecycle-update', (event) => {
+        updateLifecycleDisplay(event.detail);
+        if (event.detail && ['rebuilt', 'error'].includes(event.detail.status)) {
+            updateFastLane();
+            updateSlowLane();
+        }
+    });
+
+    document.addEventListener('brain-state-updated', () => {
+        updateFastLane();
+        updateSlowLane();
+    });
+
+    document.addEventListener('trade-closed-detected', () => {
+        refreshBrainPanels();
+    });
+
+    console.log('Dashboard App Initialized');
+}
+
+// Run init when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}

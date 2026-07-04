@@ -1,0 +1,233 @@
+From 44ff17f9dc30b17096b1e897bc3a2e864937c6ac Mon Sep 17 00:00:00 2001
+From: local <local@confluence>
+Date: Fri, 3 Jul 2026 19:25:42 +0100
+Subject: [PATCH] local: confluence-stack patches (multi-instance
+ LLM_TRADER_HOME, 1m timeframe, Windows path sanitization, None-guards, Gemini
+ 180s timeout)
+
+---
+ .../formatters/long_term_formatter.py         | 11 +++++-----
+ src/config/loader.py                          | 21 ++++++++++++++++++-
+ src/logger/logger.py                          |  2 +-
+ src/notifiers/notifier.py                     |  2 +-
+ src/platforms/ai_providers/google.py          |  4 ++--
+ src/utils/timeframe_validator.py              |  5 +++--
+ start.py                                      | 16 +++++++++++---
+ 7 files changed, 46 insertions(+), 15 deletions(-)
+
+diff --git a/src/analyzer/formatters/long_term_formatter.py b/src/analyzer/formatters/long_term_formatter.py
+index c28fc17..de4221d 100644
+--- a/src/analyzer/formatters/long_term_formatter.py
++++ b/src/analyzer/formatters/long_term_formatter.py
+@@ -127,21 +127,22 @@ class LongTermFormatter:
+         """Format daily timeframe indicators."""
+         indicator_items = []
+ 
++        # Values can be None for young listings (insufficient daily history, e.g. pre-IPO perps)
+         # RSI
+-        if 'daily_rsi' in long_term_data:
++        if long_term_data.get('daily_rsi') is not None:
+             rsi_val = long_term_data['daily_rsi']
+             rsi_status = "Overbought" if rsi_val > 70 else "Oversold" if rsi_val < 30 else "Neutral"
+             indicator_items.append(f"Daily RSI: {self.format_utils.fmt(rsi_val)} ({rsi_status})")
+ 
+         # MACD
+-        if 'daily_macd_line' in long_term_data and 'daily_macd_signal' in long_term_data:
++        if long_term_data.get('daily_macd_line') is not None and long_term_data.get('daily_macd_signal') is not None:
+             macd_line = long_term_data['daily_macd_line']
+             macd_signal = long_term_data['daily_macd_signal']
+             macd_status = "Bullish" if macd_line > macd_signal else "Bearish"
+             indicator_items.append(f"Daily MACD: {macd_status}")
+ 
+         # Stochastic
+-        if 'daily_stoch_k' in long_term_data:
++        if long_term_data.get('daily_stoch_k') is not None:
+             stoch_val = long_term_data['daily_stoch_k']
+             stoch_status = "Overbought" if stoch_val > 80 else "Oversold" if stoch_val < 20 else "Neutral"
+             indicator_items.append(f"Daily Stoch: {self.format_utils.fmt(stoch_val)} ({stoch_status})")
+@@ -152,7 +153,7 @@ class LongTermFormatter:
+ 
+     def _format_adx_section(self, long_term_data: dict) -> str:
+         """Format ADX trend strength analysis."""
+-        if 'daily_adx' not in long_term_data:
++        if long_term_data.get('daily_adx') is None:
+             return ""
+ 
+         adx_val = long_term_data['daily_adx']
+@@ -181,7 +182,7 @@ class LongTermFormatter:
+             ichimoku_items.append(f"Kijun: {self.format_utils.fmt(kijun)}")
+ 
+         # Cloud analysis
+-        if 'ichimoku_span_a' in long_term_data and 'ichimoku_span_b' in long_term_data:
++        if long_term_data.get('ichimoku_span_a') is not None and long_term_data.get('ichimoku_span_b') is not None:
+             span_a = long_term_data['ichimoku_span_a']
+             span_b = long_term_data['ichimoku_span_b']
+             cloud_top = max(span_a, span_b)
+diff --git a/src/config/loader.py b/src/config/loader.py
+index ae25061..19b8701 100644
+--- a/src/config/loader.py
++++ b/src/config/loader.py
+@@ -4,14 +4,33 @@ Loads private keys from keys.env and public configuration from config.ini.
+ """
+ 
+ import configparser
++import os
+ from pathlib import Path
+ from typing import Any
+ from dotenv import dotenv_values
+ 
+ from src.utils.timeframe_validator import TimeframeValidator
+ 
++
++def _resolve_home() -> Path:
++    """Resolve the config/keys root directory.
++
++    Multi-instance support: when ``LLM_TRADER_HOME`` is set it overrides the
++    repo directory, so several instances can share this code while each reads
++    its own ``config/config.ini`` and ``keys.env``. Without it, the directory
++    two levels above this file (the repo root) is used, preserving the original
++    single-instance behaviour.
++    """
++    override = os.environ.get("LLM_TRADER_HOME")
++    if override:
++        candidate = Path(override).expanduser().resolve()
++        if candidate.is_dir():
++            return candidate
++    return Path(__file__).parent.parent.parent.resolve()
++
++
+ # Get the root directory (where keys.env is located) and config directory (where config.ini is located)
+-ROOT_DIR = Path(__file__).parent.parent.parent.resolve()
++ROOT_DIR = _resolve_home()
+ CONFIG_DIR = ROOT_DIR / "config"
+ KEYS_ENV_PATH = ROOT_DIR / "keys.env"
+ CONFIG_INI_PATH = CONFIG_DIR / "config.ini"
+diff --git a/src/logger/logger.py b/src/logger/logger.py
+index 44efb76..221b763 100644
+--- a/src/logger/logger.py
++++ b/src/logger/logger.py
+@@ -67,7 +67,7 @@ class DailyRotatingFileHandler(TimedRotatingFileHandler):
+ class Logger(logging.Logger):
+     def __init__(self, logger_name: str = '', log_filename_prefix: str = '', log_dir: str = None,
+                  logger_debug: bool = False) -> None:
+-        sanitized_name = logger_name.replace('/', '_').replace('\\', '_')
++        sanitized_name = logger_name.replace('/', '_').replace('\\', '_').replace(':', '_')
+ 
+         level = logging.DEBUG if logger_debug else logging.INFO
+         super().__init__(sanitized_name, level)
+diff --git a/src/notifiers/notifier.py b/src/notifiers/notifier.py
+index 4c7d057..226ded2 100644
+--- a/src/notifiers/notifier.py
++++ b/src/notifiers/notifier.py
+@@ -420,7 +420,7 @@ class DiscordNotifier(BaseNotifier):
+                 self.logger.warning("Chart image buffer is empty; skipping Discord chart upload")
+                 return None
+ 
+-            safe_symbol = symbol.replace('/', '_')
++            safe_symbol = symbol.replace('/', '_').replace(':', '_')
+             filename = f"{safe_symbol}_{timeframe}_analysis_chart.png"
+ 
+             sent_message = await self._send_with_transient_retry(
+diff --git a/src/platforms/ai_providers/google.py b/src/platforms/ai_providers/google.py
+index a5fef04..f62ff90 100644
+--- a/src/platforms/ai_providers/google.py
++++ b/src/platforms/ai_providers/google.py
+@@ -34,7 +34,7 @@ class GoogleAIClient(BaseAIClient):
+ 
+     async def _initialize_client(self) -> None:
+         """Initialize the Google GenAI client."""
+-        self.client = genai.Client(api_key=self.api_key)
++        self.client = genai.Client(api_key=self.api_key, http_options={"timeout": 180_000})
+ 
+     async def close(self) -> None:
+         """Close the client."""
+@@ -53,7 +53,7 @@ class GoogleAIClient(BaseAIClient):
+     def _ensure_client(self) -> genai.Client:
+         """Ensure a client exists and return it."""
+         if not self.client:
+-            self.client = genai.Client(api_key=self.api_key)
++            self.client = genai.Client(api_key=self.api_key, http_options={"timeout": 180_000})
+         return self.client
+ 
+     def _extract_text_from_messages(self, messages: list[dict[str, Any]]) -> str:
+diff --git a/src/utils/timeframe_validator.py b/src/utils/timeframe_validator.py
+index 3dcfab5..42b3290 100644
+--- a/src/utils/timeframe_validator.py
++++ b/src/utils/timeframe_validator.py
+@@ -12,7 +12,7 @@ import re
+ 
+ class TimeframeValidator:
+     """Validates and manages timeframe configurations"""
+-    SUPPORTED_TIMEFRAMES = ['5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w']
++    SUPPORTED_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w']
+     # Time constants
+     MINUTES_IN_HOUR = 60
+     MINUTES_IN_DAY = 1440
+@@ -28,6 +28,7 @@ class TimeframeValidator:
+     MONDAY_ALIGNMENT_OFFSET_DAYS = 4
+ 
+     TIMEFRAME_MINUTES = {
++        '1m': 1,
+         '5m': 5,
+         '15m': 15,
+         '30m': 30,
+@@ -40,7 +41,7 @@ class TimeframeValidator:
+         '1d': MINUTES_IN_DAY,
+         '1w': MINUTES_IN_WEEK
+     }
+-    CCXT_STANDARD_TIMEFRAMES = ['5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w']
++    CCXT_STANDARD_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '1w']
+ 
+     @classmethod
+     def validate(cls, timeframe: str) -> bool:
+diff --git a/start.py b/start.py
+index 2fe6436..618093d 100644
+--- a/start.py
++++ b/start.py
+@@ -131,6 +131,14 @@ class SingleInstanceLock:
+     """Manages a single instance lock file to prevent multiple application instances."""
+ 
+     def __init__(self, app_name: str = ".llm_trader.lock"):
++        # Per-instance lock: when LLM_TRADER_HOME is set (multi-instance mode)
++        # the lock file name embeds a hash of that home dir so separate
++        # instances acquire distinct locks/mutexes instead of blocking each
++        # other. Without it the original single-instance behaviour is kept.
++        home = os.environ.get("LLM_TRADER_HOME")
++        if home:
++            home_key = hashlib.sha256(str(Path(home).resolve()).encode("utf-8")).hexdigest()[:12]
++            app_name = f".llm_trader_{home_key}.lock"
+         self.lock_file_path = Path.home() / app_name
+         self._lock_handle: Optional[int] = None
+         self._mutex_handle = None
+@@ -140,7 +148,7 @@ class SingleInstanceLock:
+         try:
+             import ctypes
+ 
+-            lock_key = hashlib.sha1(str(self.lock_file_path).encode("utf-8")).hexdigest()[:16]
++            lock_key = hashlib.sha256(str(self.lock_file_path).encode("utf-8")).hexdigest()[:16]
+             mutex_name = f"Local\\LLMTraderSingleInstance_{lock_key}"
+             kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+             handle = kernel32.CreateMutexW(None, False, mutex_name)
+@@ -326,7 +334,8 @@ class CompositionRoot:
+         os.makedirs(os.path.join(data_dir, "trading"), exist_ok=True)
+         os.makedirs(os.path.join(data_dir, "charts"), exist_ok=True)
+ 
+-        safe_symbol = self.config.CRYPTO_PAIR.replace("/", "_").replace("-", "_")
++        # ':' appears in perpetual symbols (e.g. SPCX/USDT:USDT) and is illegal in Windows paths
++        safe_symbol = self.config.CRYPTO_PAIR.replace("/", "_").replace("-", "_").replace(":", "_")
+         brain_dir = os.path.join(data_dir, "trading", f"brain_{safe_symbol}_{self.config.TIMEFRAME}")
+         os.makedirs(brain_dir, exist_ok=True)
+ 
+@@ -555,7 +564,8 @@ class CompositionRoot:
+ 
+         _configure_hf_hub_auth()
+ 
+-        safe_symbol = self.config.CRYPTO_PAIR.replace("/", "_").replace("-", "_")
++        # ':' appears in perpetual symbols (e.g. SPCX/USDT:USDT) and is illegal in Windows paths
++        safe_symbol = self.config.CRYPTO_PAIR.replace("/", "_").replace("-", "_").replace(":", "_")
+         brain_path = os.path.join(self.config.DATA_DIR, "trading", f"brain_{safe_symbol}_{self.config.TIMEFRAME}")
+ 
+         chroma_client = chromadb.PersistentClient(path=brain_path)
+-- 
+2.39.2.windows.1
+

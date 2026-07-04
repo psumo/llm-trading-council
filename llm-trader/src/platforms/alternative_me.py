@@ -1,0 +1,173 @@
+import asyncio
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import aiohttp
+
+from src.logger.logger import Logger
+from src.utils.decorators import retry_async
+
+
+class AlternativeMeAPI:
+    """
+    API client for Alternative.me services.
+    Primarily handles the Fear & Greed Index data.
+    """
+    # API endpoints
+    FEAR_GREED_INDEX_URL = "https://api.alternative.me/fng/"
+    FEAR_GREED_HISTORY_URL = "https://api.alternative.me/fng/?limit={limit}&format=json"
+
+    def __init__(
+        self,
+        logger: Logger,
+        data_dir: str = 'data/market_data',
+        cache_update_hours: int = 12
+    ) -> None:
+        self.logger = logger
+        self.data_dir = data_dir
+        self.update_interval = timedelta(hours=cache_update_hours)
+        self.fear_greed_cache_file = os.path.join(data_dir, "fear_greed_index.json")
+        self.last_update: datetime | None = None
+        self.current_index: dict[str, Any] | None = None
+        self.session: aiohttp.ClientSession | None = None
+
+        os.makedirs(data_dir, exist_ok=True)
+
+    async def initialize(self) -> None:
+        """Initialize the API client and load cached data"""
+        self.session = aiohttp.ClientSession()
+
+        if await asyncio.to_thread(os.path.exists, self.fear_greed_cache_file):
+            try:
+                cached_data = await asyncio.to_thread(self._read_cache_file)
+                if "timestamp" in cached_data and "data" in cached_data:
+                    loaded_time = datetime.fromisoformat(cached_data["timestamp"])
+                    if loaded_time.tzinfo is None:
+                        loaded_time = loaded_time.replace(tzinfo=timezone.utc)
+                    self.last_update = loaded_time
+                    self.current_index = cached_data["data"]
+                    self.logger.debug("Loaded Fear & Greed cache from %s", self.last_update.isoformat())
+            except Exception as e:
+                self.logger.error("Error loading Fear & Greed cache: %s", e)
+
+    def _read_cache_file(self) -> dict[str, Any]:
+        """Read and parse the cache file. Executed in a thread."""
+        with open(self.fear_greed_cache_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def _write_cache_file(self, data: dict[str, Any]) -> None:
+        """Write data to cache file. Executed in a thread."""
+        with open(self.fear_greed_cache_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    @retry_async(max_retries=3, initial_delay=2, backoff_factor=2, max_delay=30)
+    async def get_fear_greed_index(self, force_refresh: bool = False) -> dict[str, Any]:
+        """
+        Get current Fear & Greed Index data
+
+        Args:
+            force_refresh: Force refresh from API instead of using cache
+
+        Returns:
+            Dictionary containing Fear & Greed Index data
+        """
+        current_time = datetime.now(timezone.utc)
+
+        if not force_refresh and self.last_update and self.current_index and \
+           current_time - self.last_update < self.update_interval:
+            self.logger.debug("Using cached Fear & Greed data from %s", self.last_update.isoformat())
+            return self.current_index
+
+        self.logger.debug("Fetching fresh Fear & Greed Index data")
+
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+
+        client_timeout = aiohttp.ClientTimeout(total=30)
+        async with self.session.get(self.FEAR_GREED_INDEX_URL, timeout=client_timeout) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data and "data" in data and len(data["data"]) > 0:
+                    index_data = data["data"][0]
+
+                    result = {
+                        "value": int(index_data.get("value", 0)),
+                        "value_classification": index_data.get("value_classification", "Unknown"),
+                        "timestamp": int(index_data.get("timestamp", 0)),
+                        "time": datetime.fromtimestamp(int(index_data.get("timestamp", 0)), tz=timezone.utc).isoformat()
+                    }
+
+                    cache_data = {
+                        "timestamp": current_time.isoformat(),
+                        "data": result
+                    }
+
+                    await asyncio.to_thread(self._write_cache_file, cache_data)
+
+                    self.last_update = current_time
+                    self.current_index = result
+                    self.logger.debug("Updated Fear & Greed cache with value: %s - %s", result['value'], result['value_classification'])
+
+                    return result
+
+                self.logger.warning("Invalid Fear & Greed Index API response format")
+            else:
+                self.logger.error("Fear & Greed API request failed with status %s", resp.status)
+
+        # Non-200 or empty response: return cached data if available
+        if self.current_index:
+            self.logger.warning("Using cached Fear & Greed data as fallback after API failure")
+            return self.current_index
+
+        return {
+            "value": 0,
+            "value_classification": "Unknown",
+            "timestamp": 0,
+            "time": current_time.isoformat()
+        }
+
+    @retry_async(max_retries=3, initial_delay=2, backoff_factor=2, max_delay=30)
+    async def get_historical_fear_greed(self, days: int = 30) -> list[dict[str, Any]]:
+        """
+        Get historical Fear & Greed Index data
+
+        Args:
+            days: Number of days of historical data to retrieve
+
+        Returns: list of Fear & Greed Index data points, sorted by date (newest first)
+        """
+        limit = min(max(days, 1), 365)  # Limit between 1 and 365
+        url = self.FEAR_GREED_HISTORY_URL.format(limit=limit)
+
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+
+        client_timeout = aiohttp.ClientTimeout(total=45)
+        async with self.session.get(url, timeout=client_timeout) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data and "data" in data:
+                    history = []
+                    for item in data["data"]:
+                        history.append({
+                            "value": int(item.get("value", 0)),
+                            "value_classification": item.get("value_classification", "Unknown"),
+                            "timestamp": int(item.get("timestamp", 0)),
+                            "time": datetime.fromtimestamp(int(item.get("timestamp", 0)), tz=timezone.utc).isoformat()
+                        })
+
+                    history.sort(key=lambda x: x["timestamp"], reverse=True)
+                    return history
+
+                self.logger.warning("Invalid Fear & Greed History API response format")
+            else:
+                self.logger.error("Fear & Greed History API request failed with status %s", resp.status)
+
+        return []
+
+    async def close(self) -> None:
+        """Close the API client session."""
+        if self.session and not self.session.closed:
+            await self.session.close()

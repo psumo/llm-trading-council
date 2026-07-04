@@ -1,0 +1,285 @@
+"""
+Google GenAI client implementation using the official Google GenAI SDK.
+Supports both text-only and multimodal (text + image) requests for pattern analysis.
+"""
+import inspect
+import io
+from typing import Any, Union
+
+from google import genai
+from google.genai import errors, types
+
+from src.logger.logger import Logger
+from src.platforms.ai_providers.base import BaseAIClient
+from src.platforms.ai_providers.response_models import ChatResponseModel, UsageModel
+from src.utils.decorators import retry_api_call
+
+
+class GoogleAIClient(BaseAIClient):
+    """Client for handling Google AI API requests using the official Google GenAI SDK."""
+
+    def __init__(self, api_key: str, model: str, logger: Logger) -> None:
+        """
+        Initialize the GoogleAIClient.
+
+        Args:
+            api_key: Google AI API key
+            model: Model name (e.g., 'gemini-2.5-flash')
+            logger: Logger instance
+        """
+        super().__init__(logger)
+        self.api_key = api_key
+        self.model = model
+        self.client: genai.Client | None = None
+
+    async def _initialize_client(self) -> None:
+        """Initialize the Google GenAI client."""
+        self.client = genai.Client(api_key=self.api_key, http_options={"timeout": 180_000})
+
+    async def close(self) -> None:
+        """Close the client."""
+        if self.client:
+            try:
+                aio_client = getattr(self.client, "aio", None)
+                aclose = getattr(aio_client, "aclose", None)
+                if callable(aclose):
+                    close_result = aclose()
+                    if inspect.isawaitable(close_result):
+                        await close_result
+            finally:
+                self.client = None
+                self.logger.debug("GoogleAIClient closed successfully")
+
+    def _ensure_client(self) -> genai.Client:
+        """Ensure a client exists and return it."""
+        if not self.client:
+            self.client = genai.Client(api_key=self.api_key, http_options={"timeout": 180_000})
+        return self.client
+
+    def _extract_text_from_messages(self, messages: list[dict[str, Any]]) -> str:
+        """Extract combined text content from OpenAI-style messages."""
+        text_parts = []
+        for message in messages:
+            role = message["role"]
+            content = message["content"]
+            if role == "system":
+                text_parts.append(f"System: {content}")
+            else:
+                text_parts.append(content)
+        return "\n\n".join(text_parts)
+
+    def _extract_text_from_response(self, response) -> str:
+        """Extract text content from Google AI response, handling non-text parts gracefully."""
+        try:
+            text_parts = []
+            non_text_parts = []
+            for candidate in response.candidates:
+                for part in candidate.content.parts:
+                    try:
+                        text = part.text
+                        if text is not None:
+                            text_parts.append(text)
+                        else:
+                            non_text_parts.append(type(part).__name__ + " (None)")
+                    except AttributeError:
+                        non_text_parts.append(type(part).__name__)
+            if non_text_parts:
+                self.logger.debug("Google AI response contains non-text parts: %s. Extracting text only.", non_text_parts)
+            return "\n".join(text_parts)
+        except Exception as e:
+            self.logger.error("Failed to extract text from Google AI response: %s", e)
+            return ""
+
+    def _extract_usage_metadata(self, response) -> UsageModel | None:
+        """Extract token usage metadata from Google AI response."""
+        try:
+            metadata = response.usage_metadata
+            if metadata:
+                try:
+                    prompt = metadata.prompt_token_count
+                except AttributeError:
+                    prompt = 0
+                
+                try:
+                    completion = metadata.candidates_token_count
+                except AttributeError:
+                    completion = 0
+                
+                try:
+                    total = metadata.total_token_count
+                except AttributeError:
+                    total = 0
+                
+                return UsageModel(
+                    prompt_tokens=prompt,
+                    completion_tokens=completion,
+                    total_tokens=total,
+                )
+        except AttributeError:
+            pass
+        except Exception as e:
+            self.logger.debug("Failed to extract usage metadata: %s", e)
+        return None
+
+    def _supports_code_execution(self, model_name: str) -> bool:
+        """Return whether a Gemini model is known to support code execution tools."""
+        normalized = model_name.lower().removeprefix("models/")
+        return normalized.startswith(("gemini-3-flash", "gemini-3.5-flash"))
+
+    def _create_generation_config(
+        self,
+        model_config: dict[str, Any],
+        effective_model: str | None = None,
+        include_thinking: bool = True,
+        include_code_execution: bool = False
+    ) -> types.GenerateContentConfig:
+        """Create a generation config from model configuration dictionary."""
+        model_name = effective_model or self.model
+        thinking_config = None
+        if include_thinking:
+            thinking_level = model_config.get("thinking_level", "high")
+            thinking_levels = {
+                "minimal": types.ThinkingLevel.MINIMAL,
+                "low": types.ThinkingLevel.LOW,
+                "medium": types.ThinkingLevel.MEDIUM,
+                "high": types.ThinkingLevel.HIGH,
+            }
+            if thinking_level in thinking_levels:
+                thinking_config = types.ThinkingConfig(thinking_level=thinking_levels[thinking_level])
+
+        tools = []
+        if include_code_execution and self._supports_code_execution(model_name):
+            tools.append(types.Tool(code_execution=types.ToolCodeExecution()))
+
+        config = {
+            "max_output_tokens": model_config.get("max_tokens", 32768),
+            "thinking_config": thinking_config,
+            "tools": tools if tools else None,
+        }
+        return types.GenerateContentConfig.model_validate(config)
+
+    def _should_retry_without_thinking(self, exception: Exception) -> bool:
+        """Return whether a Google SDK error indicates unsupported thinking config."""
+        code = None
+        message = str(exception)
+        if isinstance(exception, errors.APIError):
+            code = getattr(exception, "code", None)
+            sdk_message = getattr(exception, "message", None)
+            status = getattr(exception, "status", None)
+            message = " ".join(str(part) for part in (sdk_message, status, exception) if part)
+
+        if code is not None and code != 400:
+            return False
+
+        error_text = message.lower()
+        if "thinking" not in error_text:
+            return False
+        return any(term in error_text for term in ("invalid", "unsupported", "unknown", "field", "400"))
+
+    @retry_api_call(max_retries=3, initial_delay=1, backoff_factor=2, max_delay=30)
+    async def chat_completion(
+        self, model: str, messages: list[dict[str, Any]], model_config: dict[str, Any]
+    ) -> ChatResponseModel | None:
+        """
+        Send a chat completion request to the Google AI API.
+
+        Args:
+            model: Model name (overrides default if provided)
+            messages: list of OpenAI-style messages
+            model_config: Configuration parameters for the model
+
+        Returns:
+            ChatResponseModel or None if failed
+        """
+        client = self._ensure_client()
+        prompt = self._extract_text_from_messages(messages)
+        effective_model = model if model else self.model
+        for include_thinking in (True, False):
+            try:
+                generation_config = self._create_generation_config(
+                    model_config,
+                    effective_model=effective_model,
+                    include_thinking=include_thinking
+                )
+                self.logger.debug("Sending request to Google AI with model: %s (thinking=%s)", effective_model, include_thinking)
+                response = await client.aio.models.generate_content(
+                    model=effective_model,
+                    contents=prompt,
+                    config=generation_config
+                )
+                content_text = self._extract_text_from_response(response)
+                usage = self._extract_usage_metadata(response)
+                self.logger.debug("Received successful response from Google AI")
+                return self.create_response(content_text, usage=usage)
+            except Exception as e: # pylint: disable=broad-exception-caught
+                if include_thinking and self._should_retry_without_thinking(e):
+                    self.logger.warning("Model may not support thinking_config, retrying without it: %s", e)
+                    continue
+                self.logger.error("Error during Google AI request: %s", e)
+                return self._handle_exception(e)
+        return None
+
+    @retry_api_call(max_retries=3, initial_delay=1, backoff_factor=2, max_delay=30)
+    async def chat_completion_with_chart_analysis(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        chart_image: Union[io.BytesIO, bytes, str],
+        model_config: dict[str, Any]
+    ) -> ChatResponseModel | None:
+        """
+        Send a chat completion request with a chart image for pattern analysis.
+
+        Args:
+            model: Model name (overrides default if provided)
+            messages: list of OpenAI-style messages
+            chart_image: Chart image as BytesIO, bytes, or file path string
+            model_config: Configuration parameters for the model
+
+        Returns:
+            ChatResponseModel or None if failed
+        """
+        client = self._ensure_client()
+        prompt = self._extract_text_from_messages(messages)
+        effective_model = model if model else self.model
+        img_data = self.process_chart_image(chart_image)
+        image_part = types.Part.from_bytes(data=img_data, mime_type='image/png')
+        contents = [prompt, image_part]
+        for include_thinking in (True, False):
+            try:
+                # Check for code execution config, default to True if not specified
+                include_code_execution = model_config.get("google_code_execution", False)
+                code_execution_enabled = include_code_execution and self._supports_code_execution(effective_model)
+
+                generation_config = self._create_generation_config(
+                    model_config,
+                    effective_model=effective_model,
+                    include_thinking=include_thinking,
+                    include_code_execution=include_code_execution
+                )
+                self.logger.debug("Sending chart analysis to Google AI: %s (thinking=%s, code_execution=%s, %s bytes)", effective_model, include_thinking, code_execution_enabled, len(img_data))
+                response = await client.aio.models.generate_content(
+                    model=effective_model,
+                    contents=contents,
+                    config=generation_config
+                )
+                content_text = self._extract_text_from_response(response)
+                usage = self._extract_usage_metadata(response)
+                self.logger.debug("Received successful chart analysis response from Google AI")
+                return self.create_response(content_text, usage=usage)
+            except Exception as e: # pylint: disable=broad-exception-caught
+                if include_thinking and self._should_retry_without_thinking(e):
+                    self.logger.warning("Model may not support thinking_config for chart analysis, retrying without it: %s", e)
+                    continue
+                self.logger.error("Error during Google AI chart analysis request: %s", e)
+                return self._handle_exception(e)
+        return None
+
+    def _handle_exception(self, exception: Exception) -> ChatResponseModel | None:
+        """Handle Google AI specific exceptions, falling back to common handler."""
+        result = self.handle_common_errors(exception)
+        if result:
+            return result
+        sanitized_error = self._sanitize_error_message(str(exception))
+        self.logger.error("Unexpected Google AI error: %s", sanitized_error)
+        return None

@@ -1,0 +1,255 @@
+import json
+import os
+import sys
+import time
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from src.logger.logger import Logger
+
+if TYPE_CHECKING:
+    from src.config.loader import Config
+
+
+class RagFileHandler:
+    NEWS_FILE = "crypto_news.json"
+    MARKET_DATA_DIR = "market_data"
+
+    def __init__(self, logger: Logger, config: "Config", unified_parser=None):
+        """Initialize RagFileHandler with logger and config.
+
+        Args:
+            logger: Logger instance
+            config: Config instance for data directory path
+            unified_parser: UnifiedParser instance (must be injected from app.py)
+        """
+
+        self.logger = logger
+        self.config = config
+        self.base_dir = self._resolve_base_dir()
+        self.data_dir = os.path.join(self.base_dir, config.DATA_DIR)
+        self.market_data_dir = os.path.join(self.data_dir, self.MARKET_DATA_DIR)
+        self.news_file_path = os.path.join(self.data_dir, self.NEWS_FILE)
+        self.tickers_file = os.path.join(self.data_dir, "known_tickers.json")
+
+        # RAG priorities are configuration, not data - store in config directory
+        config_dir = os.path.join(self.base_dir, "config")
+        self.rag_priorities_file = os.path.join(config_dir, "rag_priorities.json")
+        self._last_news_save_time = 0
+        self.unified_parser = unified_parser
+
+        self.setup_directories()
+
+    def setup_directories(self):
+        os.makedirs(self.data_dir, exist_ok=True)
+        os.makedirs(self.market_data_dir, exist_ok=True)
+        self.logger.debug("Initialized RAG file directories")
+
+    def _resolve_base_dir(self) -> str:
+        if getattr(sys, 'frozen', False):
+            return os.path.dirname(sys.executable)
+        else:
+            # __file__ is inside src/rag/; go up three levels to reach project root
+            return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def load_json_file(self, file_path: str) -> dict | None:
+        try:
+            # Security: Prevent path traversal including symlink resolution
+            abs_path = os.path.realpath(file_path)
+            abs_base_dir = os.path.realpath(self.base_dir)
+            if os.path.commonpath([abs_path, abs_base_dir]) != abs_base_dir:
+                self.logger.error("Path traversal attempt detected: %s", file_path)
+                return None
+
+            if os.path.exists(abs_path):
+                with open(abs_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return None
+        except Exception as e:
+            self.logger.error("Error loading JSON file %s: %s", file_path, e)
+            return None
+
+    def save_json_file(self, file_path: str, data: dict):
+        try:
+            # Security: Prevent path traversal including symlink resolution
+            abs_path = os.path.realpath(file_path)
+            abs_base_dir = os.path.realpath(self.base_dir)
+            if os.path.commonpath([abs_path, abs_base_dir]) != abs_base_dir:
+                self.logger.error("Path traversal attempt detected: %s", file_path)
+                return
+
+            # Atomic write: write to temporary file first, then rename
+            temp_path = f"{abs_path}.tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+
+            # Atomic operation: rename temp file to target
+            os.replace(temp_path, abs_path)
+        except Exception as e:
+            # Clean up temp file if it exists
+            temp_path = f"{os.path.abspath(file_path)}.tmp"
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
+            self.logger.error("Error saving JSON file %s: %s", file_path, e)
+
+    def filter_articles_by_age(self, articles: list[dict], max_age_seconds: int) -> list[dict]:
+        """Filter articles by age in seconds."""
+        current_timestamp = datetime.now().timestamp()
+        cutoff_time = current_timestamp - max_age_seconds
+
+        filtered_articles = []
+        for art in articles:
+            article_timestamp = self.unified_parser.format_utils.parse_timestamp(art.get('published_on', 0))
+            if article_timestamp > cutoff_time:
+                filtered_articles.append(art)
+
+        return filtered_articles
+
+    def save_news_articles(self, articles: list[dict]):
+        if not articles:
+            return
+
+        # Prevent saving more than once per second to avoid duplicate writes during shutdown
+        current_time = time.time()
+        if current_time - self._last_news_save_time < 1:
+            self.logger.debug("Skipping news save, too soon after previous save")
+            return
+
+        self._last_news_save_time = current_time
+
+        recent_articles = self.filter_articles_by_age(articles, max_age_seconds=86400)
+
+        if not recent_articles:
+            self.logger.debug("No recent articles to save")
+            return
+
+        try:
+            recent_articles.sort(key=lambda x: self.unified_parser.format_utils.parse_timestamp(x.get('published_on', 0)), reverse=True)
+
+            news_data = {
+                'last_updated': datetime.now().isoformat(),
+                'count': len(recent_articles),
+                'articles': recent_articles
+            }
+
+            self.save_json_file(self.news_file_path, news_data)
+            self.logger.debug("Saved %s recent news articles", len(recent_articles))
+
+        except Exception as e:
+            self.logger.error("Error saving news articles: %s", e)
+
+    def load_news_articles(self) -> list[dict]:
+        try:
+            data = self.load_json_file(self.news_file_path)
+
+            if not data or 'articles' not in data:
+                self.logger.debug("No news articles found in file or empty file")
+                return []
+
+            articles = data.get('articles', [])
+            recent_articles = self.filter_articles_by_age(articles, max_age_seconds=86400)
+
+            if len(recent_articles) < len(articles):
+                self.logger.debug("Filtered out %s articles older than 24 hours", len(articles) - len(recent_articles))
+
+            return recent_articles
+
+        except Exception as e:
+            self.logger.error("Error loading news articles: %s", e)
+            return []
+
+    def load_fallback_articles(self, max_age_hours: int = 72) -> list[dict]:
+        """Load articles from file with extended age for fallback when API fails"""
+        try:
+            data = self.load_json_file(self.news_file_path)
+
+            if not data or 'articles' not in data:
+                return []
+
+            articles = data.get('articles', [])
+            fallback_articles = self.filter_articles_by_age(
+                articles, max_age_seconds=max_age_hours * 3600
+            )
+
+            if fallback_articles:
+                self.logger.debug("Using %s cached articles as fallback", len(fallback_articles))
+
+            return fallback_articles
+
+        except Exception as e:
+            self.logger.error("Error loading fallback news articles: %s", e)
+            return []
+
+    def load_known_tickers(self) -> list[str] | None:
+        """Load known tickers from symbol_name_map keys in data JSON."""
+        try:
+            data = self.load_json_file(self.tickers_file) or {}
+            mapping = data.get("symbol_name_map", {})
+            return sorted({str(symbol).upper() for symbol in mapping.keys() if symbol})
+        except Exception as e:
+            self.logger.error("Error loading known tickers: %s", e)
+            return None
+
+    def save_known_tickers(self, tickers: list[str]) -> None:
+        """Persist known tickers by syncing symbol_name_map keys.
+
+        We keep data/known_tickers.json as the single source of truth. New
+        symbols get a lowercase placeholder name until a curated mapping is
+        provided.
+        """
+        try:
+            data = self.load_json_file(self.tickers_file) or {}
+            mapping = data.get("symbol_name_map", {})
+
+            normalized_tickers = {
+                str(ticker).upper()
+                for ticker in tickers
+                if ticker
+            }
+
+            synced_map: dict[str, str] = {}
+            for ticker in sorted(normalized_tickers):
+                existing = mapping.get(ticker)
+                if existing and existing.strip():
+                    synced_map[ticker] = existing.strip().lower()
+                else:
+                    synced_map[ticker] = ticker.lower()
+
+            data["symbol_name_map"] = synced_map
+            data.pop("tickers", None)
+            self.save_json_file(self.tickers_file, data)
+        except Exception as e:
+            self.logger.error("Error saving known tickers: %s", e)
+
+    def load_symbol_name_map(self) -> dict[str, str]:
+        """Load optional symbol -> full coin name mapping from data JSON."""
+        try:
+            data = self.load_json_file(self.tickers_file) or {}
+            mapping = data.get("symbol_name_map", {})
+            return {
+                str(symbol).upper(): str(name).lower().strip()
+                for symbol, name in mapping.items()
+                if symbol and name
+            }
+        except Exception as e:
+            self.logger.error("Error loading symbol name map: %s", e)
+            return {}
+
+    def load_rag_priorities(self) -> dict | None:
+        """Load RAG priorities configuration from disk."""
+        try:
+            self.logger.debug("Loading RAG priorities from: %s", self.rag_priorities_file)
+            self.logger.debug("File exists: %s", os.path.exists(self.rag_priorities_file))
+            data = self.load_json_file(self.rag_priorities_file)
+            if data:
+                self.logger.debug("Loaded RAG priorities configuration")
+                return data
+            else:
+                self.logger.warning("load_json_file returned None for %s", self.rag_priorities_file)
+            return None
+        except Exception as e:
+            self.logger.error("Error loading RAG priorities: %s", e, exc_info=True)
+            return None

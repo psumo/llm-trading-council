@@ -1,0 +1,621 @@
+"""Main entry point for the Crypto Trading Bot application.
+
+This module defines the `CryptoTradingBot` class, which orchestrates the interaction
+between various components like the market analyzer, trading strategy, and external APIs.
+"""
+import asyncio
+import io
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Callable, TYPE_CHECKING
+
+from src.logger.logger import Logger
+from src.utils.decorators import retry_async
+from src.utils.timeframe_validator import TimeframeValidator
+from src.managers.persistence_manager import PersistenceManager
+from src.trading import (
+    ExitMonitor,
+    PositionStatusMonitor,
+    TradingBrainService,
+    TradingStatisticsService,
+    TradingMemoryService
+)
+
+if TYPE_CHECKING:
+    from src.managers.model_manager import ModelManager
+
+
+# Configuration Constants
+POSITION_UPDATE_INTERVAL = 3600  # 1 hour
+SLEEP_CHUNK_SIZE = 1.0  # Check for interruptions every second
+CANDLE_BUFFER_SECONDS = 2  # Seconds to wait after candle start
+ERROR_WAIT_SHORT = 60   # Seconds to wait after minor error
+ERROR_WAIT_LONG = 300   # Seconds to wait after major error
+
+
+@dataclass
+class BotServices:
+    """Runtime services required by CryptoTradingBot."""
+
+    logger: Logger
+    config: Any
+    shutdown_manager: Any | None
+    exchange_manager: Any
+    market_analyzer: Any
+    trading_strategy: Any
+    discord_notifier: Any
+    keyboard_handler: Any
+    rag_engine: Any
+    coingecko_api: Any
+    market_api: Any
+    alternative_me_api: Any
+    http_session: Any
+    persistence: PersistenceManager
+    model_manager: "ModelManager"
+    brain_service: TradingBrainService
+    statistics_service: TradingStatisticsService
+    memory_service: TradingMemoryService
+    exit_monitor: ExitMonitor
+    dashboard_state: Any = None
+    discord_task: asyncio.Task | None = None
+    position_monitor_factory: Callable[[Any], PositionStatusMonitor] | None = None
+    force_analysis_event: asyncio.Event | None = None
+
+
+class CryptoTradingBot:
+    """Automated crypto trading bot - TRADING MODE ONLY."""
+
+    @staticmethod
+    def _format_utc_and_local(dt: datetime, local_tz=None) -> str:
+        """Format a timestamp with both UTC and local time for operator-facing logs."""
+        utc_dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+        local_dt = utc_dt.astimezone(local_tz)
+        local_zone = local_dt.tzname() or "local"
+        return (
+            f"{utc_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC "
+            f"/ {local_dt.strftime('%Y-%m-%d %H:%M:%S')} {local_zone}"
+        )
+
+    def __init__(self, services: BotServices):
+        """Initialize bot with runtime services assembled by the composition root."""
+        self.logger = services.logger
+        self.config = services.config
+        self.shutdown_manager = services.shutdown_manager
+
+        # Injected core components
+        self.exchange_manager = services.exchange_manager
+        self.market_analyzer = services.market_analyzer
+        self.trading_strategy = services.trading_strategy
+        self.discord_notifier = services.discord_notifier
+        self.keyboard_handler = services.keyboard_handler
+        self.rag_engine = services.rag_engine
+
+        # Injected API clients
+        self.coingecko_api = services.coingecko_api
+        self.market_api = services.market_api
+        self.alternative_me_api = services.alternative_me_api
+        self.http_session = services.http_session
+
+        # Injected trading services
+        self.persistence = services.persistence
+        self.model_manager = services.model_manager
+        self.brain_service = services.brain_service
+        self.statistics_service = services.statistics_service
+        self.memory_service = services.memory_service
+        self.exit_monitor = services.exit_monitor
+        self.dashboard_state = services.dashboard_state
+
+        # Runtime state
+        self.tasks = []
+        self.running = False
+        self._active_tasks = set()
+        self._force_analysis = services.force_analysis_event or asyncio.Event()
+        self._discord_task = services.discord_task
+
+        # Trading state
+        self.current_symbol: str | None = None
+        self.current_timeframe: str | None = None
+        self.position_monitor = (
+            services.position_monitor_factory(self)
+            if services.position_monitor_factory is not None
+            else None
+        )
+
+    @property
+    def active_tasks(self) -> set[asyncio.Task]:
+        """Return bot-managed background tasks for composition-root wiring."""
+        return self._active_tasks
+
+    def _require_position_monitor(self) -> PositionStatusMonitor:
+        if self.position_monitor is None:
+            raise RuntimeError("Position monitor dependency is not configured")
+        return self.position_monitor
+
+    async def initialize(self):
+        """Initialize all components."""
+        if self.shutdown_manager:
+            self.shutdown_manager.register_shutdown_callback(self.shutdown)
+
+            # Register components for shutdown
+            if self.keyboard_handler:
+                self.shutdown_manager.register_shutdown_callback(self.keyboard_handler.stop_listening)
+
+            if self.model_manager:
+                self.shutdown_manager.register_shutdown_callback(self.model_manager.close)
+
+            if self.market_analyzer:
+                self.shutdown_manager.register_shutdown_callback(self.market_analyzer.close)
+
+            if self.rag_engine:
+                self.shutdown_manager.register_shutdown_callback(self.rag_engine.close)
+
+            if self.exchange_manager:
+                self.shutdown_manager.register_shutdown_callback(self.exchange_manager.shutdown)
+
+            if self.http_session:
+                self.shutdown_manager.register_shutdown_callback(self.http_session.close)
+
+            # API clients (if they have close method)
+            for client in [self.alternative_me_api, self.coingecko_api, self.market_api]:
+                if client:
+                    try:
+                        self.shutdown_manager.register_shutdown_callback(client.close)
+                    except AttributeError:
+                        pass
+
+        # Register keyboard commands
+        self.keyboard_handler.register_command('a', self._force_analysis_now, "Force immediate analysis")
+        self.keyboard_handler.register_command('h', self._show_help, "Show available keyboard commands")
+        self.keyboard_handler.register_command('q', self._request_shutdown, "Quit the application")
+
+        # Start keyboard handler task
+        keyboard_task = asyncio.create_task(
+            self.keyboard_handler.start_listening(),
+            name="Keyboard-Handler"
+        )
+        self._active_tasks.add(keyboard_task)
+        keyboard_task.add_done_callback(self._active_tasks.discard)
+        self.tasks.append(keyboard_task)
+
+        self.logger.info("Crypto Trading Bot ready")
+    async def shutdown(self):
+        """Callback for graceful shutdown."""
+        self.logger.info("Signaling trading loops to stop...")
+        self.running = False
+
+        # Cancel active tasks managed by bot
+        pending_tasks = list(self._active_tasks)
+        if pending_tasks:
+            self.logger.info("Cancelling %s bot-specific tasks...", len(pending_tasks))
+            for task in pending_tasks:
+                if not task.done():
+                    task.cancel()
+            try:
+                await asyncio.wait(pending_tasks, timeout=3.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("Bot tasks shutdown timed out")
+
+        # Discord notifier cleanup (properly closes the bot)
+        if self.discord_notifier:
+            try:
+                await self.discord_notifier.shutdown()
+            except Exception as e:
+                self.logger.warning("Error shutting down Discord notifier: %s", e)
+
+        # Let the Discord start task exit naturally after bot.close().
+        if self._discord_task and not self._discord_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(self._discord_task), timeout=5.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("Discord task did not exit after bot shutdown; cancelling it")
+                self._discord_task.cancel()
+                try:
+                    await self._discord_task
+                except asyncio.CancelledError:
+                    pass
+
+        self.logger.info("Bot shutdown signaling complete.")
+
+
+    async def run(self, symbol: str, timeframe: str | None = None):
+        """Run the trading bot in continuous mode.
+
+        Args:
+            symbol: Trading pair (e.g., "BTC/USDT")
+            timeframe: Optional timeframe override
+        """
+        self.current_symbol = symbol
+        requested_timeframe = timeframe or self.config.TIMEFRAME
+        try:
+            self.current_timeframe = TimeframeValidator.validate_and_normalize(requested_timeframe)
+            self.exit_monitor.timeframe = self.current_timeframe
+            self.exit_monitor.validate()
+        except ValueError as e:
+            self.logger.error("Invalid timeframe or exit monitoring config '%s': %s", requested_timeframe, e)
+            return
+
+        exchange, exchange_id = await self.exchange_manager.find_symbol_exchange(symbol)
+        if not exchange:
+            self.logger.error("Symbol %s not found on any configured exchange", symbol)
+            return
+
+        self.current_exchange = exchange
+        self.logger.info("Starting trading for %s on %s", symbol, exchange_id)
+        self.logger.info("Timeframe: %s", self.current_timeframe)
+
+        self.market_analyzer.initialize_for_symbol(
+            symbol=symbol,
+            exchange=exchange,
+            timeframe=self.current_timeframe
+        )
+
+        self.running = True
+        check_count = 0
+
+        if self.trading_strategy.current_position:
+            position = self.trading_strategy.current_position
+            self.logger.info("Existing position: %s @ $%s", position.direction, f"{position.entry_price:,.2f}")
+            await self._require_position_monitor().start()
+        else:
+            self.logger.info("No existing position")
+
+        try:
+            await self._fetch_current_ticker()
+        except Exception:
+            self.logger.warning("Initial ticker fetch failed, continuing without price")
+
+        last_analysis_time = self.persistence.get_last_analysis_time()
+        if last_analysis_time:
+            self.logger.info(
+                "Resuming from last analysis at %s",
+                self._format_utc_and_local(last_analysis_time)
+            )
+            await self._wait_until_next_timeframe_after(last_analysis_time)
+        self.logger.info("Ready for next analysis after wait")
+
+        is_regular_run = True
+
+        while self.running:
+            try:
+                check_count += 1
+                await self._execute_trading_check(check_count, force_news_update=is_regular_run, is_candle_close=is_regular_run)
+
+                if not self.running:
+                    break
+
+                was_forced_wait = await self._wait_for_next_timeframe()
+                is_regular_run = not was_forced_wait
+
+            except asyncio.CancelledError:
+                self.logger.info("Trading cancelled")
+                self.running = False
+                break
+            except Exception as e:
+                self.logger.error("Error in trading loop: %s", e)
+                await self._interruptible_sleep(ERROR_WAIT_SHORT)
+
+    async def _execute_trading_check(self, check_count: int, force_news_update: bool = True, is_candle_close: bool = True):
+        """Execute a single trading check iteration."""
+        self._log_check_header(check_count)
+        
+        current_ticker, current_price = await self._fetch_ticker_data()
+        await self._check_position_status(current_price, is_candle_close=is_candle_close)
+        await self._execute_market_knowledge_update(force_news_update)
+        
+        self.logger.info("Running market analysis...")
+        context_data = await self._build_analysis_context(current_price, current_ticker)
+        result = await self.market_analyzer.analyze_market(**context_data)
+        
+        if "error" in result:
+            self.logger.error("Analysis failed: %s", result['error'])
+            return
+        
+        self.persistence.save_last_analysis_time()
+        decision = await self.trading_strategy.process_analysis(result, self.current_symbol)
+        
+        if decision:
+            await self._handle_new_position(decision, current_price)
+        else:
+            self.logger.info("No trading action taken")
+
+        await self._send_discord_notification(result)
+        self._save_analysis_data(result)
+    
+    def _log_check_header(self, check_count: int):
+        """Log trading check header"""
+        current_time = datetime.now()
+        self.logger.info("=" * 60)
+        self.logger.info("Trading Check #%s at %s", check_count, current_time.strftime('%Y-%m-%d %H:%M:%S'))
+        self.logger.info("=" * 60)
+    
+    async def _fetch_ticker_data(self):
+        """Fetch current ticker and price"""
+        try:
+            current_ticker = await self._fetch_current_ticker()
+            if current_ticker:
+                current_price = float(current_ticker.get('last', current_ticker.get('close', 0)))
+                return current_ticker, current_price
+        except Exception as e:
+            self.logger.warning("Could not fetch current ticker: %s", e)
+        return None, None
+    
+    async def _check_position_status(self, current_price: float | None, *, is_candle_close: bool = True):
+        """Check if existing position hit stop/target.
+
+        Soft exit mode: SL/TP evaluation only runs on candle close.
+        Forced analysis (keyboard 'a') skips automated stop checks
+        but the AI can still consciously signal CLOSE.
+        """
+        await self._require_position_monitor().check_soft_exit_status(current_price, is_candle_close=is_candle_close)
+    
+    async def _execute_market_knowledge_update(self, force_news_update: bool):
+        """Update market knowledge based on analysis type"""
+        timeout_seconds = max(1, int(self.config.RAG_UPDATE_TIMEOUT))
+        if force_news_update:
+            self.logger.info(
+                "Updating market knowledge (Regular Analysis, timeout=%ss)...",
+                timeout_seconds,
+            )
+        else:
+            self.logger.info(
+                "Updating market knowledge (Forced Analysis, timeout=%ss)...",
+                timeout_seconds,
+            )
+
+        update_start = time.perf_counter()
+        try:
+            updated = await asyncio.wait_for(
+                self.rag_engine.update_if_needed(force_update=force_news_update),
+                timeout=timeout_seconds,
+            )
+            self.logger.debug(
+                "Market knowledge update completed in %.1fs (updated=%s)",
+                time.perf_counter() - update_start,
+                updated,
+            )
+        except asyncio.TimeoutError:
+            self.logger.warning(
+                "Market knowledge update timed out after %.1fs (limit=%ss); "
+                "continuing with cached/partial market knowledge",
+                time.perf_counter() - update_start,
+                timeout_seconds,
+            )
+        except Exception as e:
+            self.logger.error(
+                "Market knowledge update failed after %.1fs: %s; continuing with "
+                "cached/partial market knowledge",
+                time.perf_counter() - update_start,
+                e,
+            )
+    
+    async def _build_analysis_context(self, current_price: float | None, current_ticker) -> dict[str, Any]:
+        """Build context data for market analysis"""
+        position_context = self.trading_strategy.get_position_context(current_price)
+        memory_context = self.memory_service.get_context_summary()
+        statistics_context = self.statistics_service.get_context()
+        
+        if statistics_context:
+            position_context = f"{position_context}\n\n{statistics_context}"
+        
+        previous_data = await self.persistence.async_load_previous_response()
+        previous_response = previous_data.get("response") if previous_data else None
+        previous_indicators = previous_data.get("technical_indicators") if previous_data else None
+        
+        last_analysis_time_str = self._get_formatted_last_analysis_time()
+        dynamic_thresholds = self.brain_service.get_dynamic_thresholds()
+        
+        return {
+            "previous_response": previous_response,
+            "previous_indicators": previous_indicators,
+            "position_context": position_context,
+            "performance_context": memory_context,
+            "brain_service": self.brain_service,
+            "last_analysis_time": last_analysis_time_str,
+            "current_ticker": current_ticker,
+            "dynamic_thresholds": dynamic_thresholds
+        }
+    
+    def _get_formatted_last_analysis_time(self) -> str | None:
+        """Get last analysis time formatted as UTC string"""
+        last_analysis_time_obj = self.persistence.get_last_analysis_time()
+        if not last_analysis_time_obj:
+            return None
+
+        if last_analysis_time_obj.tzinfo is None:
+            last_analysis_time_obj = last_analysis_time_obj.replace(tzinfo=timezone.utc)
+        else:
+            last_analysis_time_obj = last_analysis_time_obj.astimezone(timezone.utc)
+
+        return last_analysis_time_obj.strftime('%Y-%m-%d %H:%M:%S')
+    
+    async def _handle_new_position(self, decision, current_price: float | None):
+        """Handle new position creation and status updates"""
+        if decision.action not in ('BUY', 'SELL'):
+            self.logger.debug(
+                "_handle_new_position skipped for non-entry action: %s", decision.action
+            )
+            return
+        if not self.trading_strategy.current_position:
+            self.logger.warning(
+                "Expected current_position after %s action but position is None — "
+                "skipping position monitor start",
+                decision.action,
+            )
+            return
+
+        await self._require_position_monitor().handle_new_position(current_price)
+    
+    async def _send_discord_notification(self, result: dict[str, Any]):
+        """Send Discord notification with analysis results"""
+        if self.discord_notifier:
+            chart_image = None
+            last_chart_buffer = self.market_analyzer.last_chart_buffer if self.market_analyzer else None
+            if last_chart_buffer is not None:
+                try:
+                    last_chart_buffer.seek(0)
+                    chart_image = io.BytesIO(last_chart_buffer.getvalue())
+                    chart_image.seek(0)
+                except Exception as e:
+                    self.logger.warning("Failed to prepare chart image for Discord notification: %s", e)
+
+            await self.discord_notifier.send_analysis_notification(
+                result=result,
+                symbol=self.current_symbol,
+                timeframe=self.current_timeframe,
+                channel_id=self.config.MAIN_CHANNEL_ID,
+                chart_image=chart_image
+            )
+    
+    def _save_analysis_data(self, result: dict[str, Any]):
+        """Save analysis response and technical data"""
+        raw_response = result.get("raw_response", "")
+        if raw_response:
+            technical_data = result.get("technical_data")
+            generated_prompt = result.get("generated_prompt")
+            self.persistence.save_previous_response(raw_response, technical_data, generated_prompt)
+
+    @retry_async(max_retries=3, initial_delay=1, backoff_factor=2, max_delay=30)
+    async def _fetch_current_ticker(self) -> dict[str, Any] | None:
+        """Fetch current ticker from exchange."""
+        if self.current_exchange is None or self.current_symbol is None:
+            return None
+        ticker = await self.current_exchange.fetch_ticker(self.current_symbol)
+        if ticker and self.dashboard_state:
+            price = float(ticker.get('last', ticker.get('close', 0)))
+            if price > 0:
+                await self.dashboard_state.update_price(price)
+        return ticker
+
+    async def _wait_for_next_timeframe(self):
+        """Wait until the next timeframe candle starts."""
+        try:
+            if self.current_timeframe is None:
+                raise ValueError("current timeframe is not set")
+            timeframe = self.current_timeframe
+            current_time_ms = int(time.time() * 1000)
+
+            next_candle_ms = TimeframeValidator.calculate_next_candle_time(current_time_ms, timeframe)
+            delay_ms = next_candle_ms - current_time_ms + (CANDLE_BUFFER_SECONDS * 1000)
+            delay_seconds = max(0, delay_ms / 1000)
+
+            next_check_time = datetime.fromtimestamp(next_candle_ms / 1000, timezone.utc)
+            self.logger.info(
+                "Next check at %s (in %.0fs)",
+                self._format_utc_and_local(next_check_time),
+                delay_seconds
+            )
+            if self.dashboard_state:
+                await self.dashboard_state.update_next_check(next_check_time)
+            return await self._interruptible_sleep(delay_seconds)
+
+        except Exception as e:
+            self.logger.error("Error calculating next timeframe: %s", e)
+            await self._interruptible_sleep(ERROR_WAIT_LONG)
+            return False
+
+    async def _wait_until_next_timeframe_after(self, last_time: datetime):
+        """Wait until the next timeframe candle after a specific timestamp.
+
+        Args:
+            last_time: Timestamp of last analysis
+        """
+        try:
+            if self.current_timeframe is None:
+                raise ValueError("current timeframe is not set")
+            timeframe = self.current_timeframe
+            if last_time.tzinfo is None:
+                last_time = last_time.replace(tzinfo=timezone.utc)
+
+            current_time_ms = int(time.time() * 1000)
+            last_time_ms = int(last_time.timestamp() * 1000)
+
+            next_candle_ms = TimeframeValidator.calculate_next_candle_time(last_time_ms, timeframe)
+
+            if current_time_ms >= next_candle_ms:
+                self.logger.info(
+                    "Resuming from last check at %s. Next candle already passed - proceeding immediately",
+                    self._format_utc_and_local(last_time)
+                )
+                return
+
+            delay_ms = next_candle_ms - current_time_ms + (CANDLE_BUFFER_SECONDS * 1000)
+            delay_seconds = max(0, delay_ms / 1000)
+            next_check_time = datetime.fromtimestamp(next_candle_ms / 1000, timezone.utc)
+
+            is_same = TimeframeValidator.is_same_candle(current_time_ms, last_time_ms, timeframe)
+
+            context_msg = "Still in same candle" if is_same else "Resuming wait"
+            self.logger.info(
+                "Resuming from last check at %s. %s - next check at %s (in %.0fs)",
+                self._format_utc_and_local(last_time),
+                context_msg,
+                self._format_utc_and_local(next_check_time),
+                delay_seconds
+            )
+
+            if self.dashboard_state:
+                await self.dashboard_state.update_next_check(next_check_time)
+            await self._interruptible_sleep(delay_seconds)
+
+        except Exception as e:
+            self.logger.error("Error calculating wait time: %s", e)
+            await self._interruptible_sleep(ERROR_WAIT_SHORT)
+
+    async def _interruptible_sleep(self, seconds: float, respect_force_analysis: bool = True):
+        """Sleep in small chunks to allow responsive shutdown and force analysis.
+
+        Uses SLEEP_CHUNK_SIZE to check for interruptions periodically.
+        Properly handles cancellation for graceful shutdown.
+
+        Args:
+            seconds: Duration to sleep
+            respect_force_analysis: If True, wake early on force analysis event (main loop only)
+
+        Returns:
+            bool: True if sleep was interrupted by force_analysis, False otherwise
+        """
+        start_time = time.monotonic()
+
+        if respect_force_analysis:
+            self._force_analysis.clear()
+
+        try:
+            while self.running:
+                elapsed = time.monotonic() - start_time
+                if elapsed >= seconds:
+                    break
+
+                if respect_force_analysis and self._force_analysis.is_set():
+                    self._force_analysis.clear()
+                    self.logger.info("Force analysis triggered - interrupting wait")
+                    return True
+
+                remaining = seconds - elapsed
+                sleep_time = min(SLEEP_CHUNK_SIZE, remaining)
+                await asyncio.sleep(sleep_time)
+        except asyncio.CancelledError:
+            self.logger.debug("Interruptible sleep cancelled during shutdown")
+            return False
+
+        return False
+
+    async def _force_analysis_now(self):
+        """Force immediate analysis by interrupting the wait."""
+        self.logger.info("Forcing immediate analysis...")
+        self._force_analysis.set()
+
+    async def _show_help(self):
+        """Show help information about available commands."""
+        self.keyboard_handler.display_help()
+
+    async def _request_shutdown(self):
+        """Request application shutdown via keyboard."""
+        self.logger.info("Shutdown requested via keyboard command")
+        if self.shutdown_manager:
+            await self.shutdown_manager.shutdown_gracefully()
+        else:
+            self.running = False
+            for task in self.tasks:
+                if not task.done():
+                    task.cancel()

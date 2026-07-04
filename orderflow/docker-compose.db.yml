@@ -1,0 +1,39 @@
+# Confluence-local DB stack for the orderflow service.
+# Separate from the repo's docker-compose.yml (which only defines the exchange
+# apps). Brings up just TimescaleDB on a NON-conflicting port with a
+# confluence_ container-name prefix so it never clashes with the existing
+# perp_trader_db (5432) / perp_trader_redis (6379) containers.
+#
+# This is the template. Activate it as the real compose file:
+#     cp docker-compose.db.txt docker-compose.db.yml
+# Start:  docker compose -f docker-compose.db.yml up -d
+# Stop:   docker compose -f docker-compose.db.yml down        (keeps data)
+# Nuke:   docker compose -f docker-compose.db.yml down -v     (deletes data)
+#
+# NOTE: read_only rootfs is intentionally NOT set. The timescaledb-ha (Patroni)
+# image needs several writable runtime paths (/var/run/postgresql sockets, HA
+# tooling) and a read-only rootfs sends it into a restart loop. no-new-privileges
+# is kept as reasonable hardening for a local dev DB.
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb-ha:pg14-latest
+    container_name: confluence_orderflow_db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    ports:
+      # host 5455 -> container 5432. 5455 avoids 5432 (perp_trader_db) and the
+      # repo's default 5433.
+      - '5455:5432'
+    volumes:
+      - confluence_orderflow_pgdata:/home/postgres/pgdata/data
+
+volumes:
+  confluence_orderflow_pgdata:
+    name: confluence_orderflow_pgdata

@@ -1,0 +1,94 @@
+# Binance API 配置
+# 注意: api_key 和 api_secret 会被 .env 文件中的环境变量自动覆盖
+# 推荐使用 .env 文件配置敏感信息
+binance:
+  api_key: "BINANCE_API_KEY"        # 会被环境变量 BINANCE_API_KEY 覆盖
+  api_secret: "BINANCE_API_SECRET"  # 会被环境变量 BINANCE_API_SECRET 覆盖
+  testnet: true  # 测试网模式，实盘前改为 false
+  
+# DeepSeek API 配置 (向后兼容)
+# 注意: api_key 会被 .env 文件中的环境变量自动覆盖
+deepseek:
+  api_key: "DEEPSEEK_API_KEY"       # 会被环境变量 DEEPSEEK_API_KEY 覆盖
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"
+  temperature: 0.3
+  max_tokens: 2000
+
+# LLM 配置 (多提供商支持)
+# 支持: openai, deepseek, claude, qwen, gemini, kimi, minimax, glm
+llm:
+  provider: deepseek              # 当前使用的提供商
+  model: deepseek-chat            # 模型名称 (留空则使用提供商默认值)
+  temperature: 0.3
+  max_tokens: 2000
+  timeout: 120
+  max_retries: 3
+
+# 交易配置
+trading:
+  symbols: ["BTCUSDT"]  # 默认只使用 BTC，可添加其他币种如 "ETHUSDT", "SOLUSDT"
+  primary_symbol: "BTCUSDT"  # 主要交易对（向后兼容）
+  timeframes: ["1m", "5m", "15m", "1h"]
+  leverage: 5
+  symbol_blacklist: []  # 可选：禁用高风险/低流动性币种
+  selector_min_quote_volume: 5000000  # 24h USDT成交额下限
+  selector_min_price: 0.05  # 过滤超低价币种
+  selector_min_quote_volume_per_usdt: 3000  # 动态成交额下限(每1 USDT权益)
+  
+# 风控配置
+risk:
+  max_risk_per_trade_pct: 1.5  # 单笔最大风险
+  max_total_position_pct: 33.3  # 最大总仓位
+  max_leverage: 5
+  max_consecutive_losses: 3
+  stop_trading_on_drawdown_pct: 10.0
+  max_holding_cycles: 180  # 最大持仓周期硬上限 (≈ 9h if cycle_interval=3m)
+
+# Redis 配置
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  
+# 日志配置
+logging:
+  level: "INFO"
+  file: "logs/trading.log"
+  
+# 回测配置
+backtest:
+  start_date: "2024-01-01"
+  end_date: "2024-12-01"
+  initial_capital: 10000
+
+# Agent 配置 (可选 Agent 开关)
+# Core agents (DataSyncAgent, QuantAnalystAgent, RiskAuditAgent) 始终启用
+agents:
+  # ML/AI 预测层
+  predict_agent: true              # ML 概率预测
+  ai_prediction_filter_agent: true # AI 否决机制 (依赖 predict_agent)
+  
+  # 市场分析
+  regime_detector_agent: true      # 市场状态检测 (趋势/震荡/高波动)
+  position_analyzer_agent: false   # 价格位置分析 (区间位置)
+  
+  # 触发检测
+  trigger_detector_agent: true     # 5m K线模式检测
+  
+  # LLM 语义分析 (消耗 API 额度，默认关闭)
+  trend_agent_llm: false           # 1h 趋势 LLM 分析
+  setup_agent_llm: false           # 15m 入场 LLM 分析
+  trigger_agent_llm: false         # 5m 触发 LLM 分析
+  
+  # 本地语义分析 (不调用 LLM)
+  trend_agent_local: true          # 1h 趋势规则分析
+  setup_agent_local: true          # 15m 入场规则分析
+  trigger_agent_local: true        # 5m 触发规则分析
+  
+  # 交易反思
+  reflection_agent_llm: false      # 每 10 笔交易后 LLM 反思
+  reflection_agent_local: true     # 本地规则反思
+  
+  # 选币
+  symbol_selector_agent: true      # AUTO1/AUTO3 自动选币

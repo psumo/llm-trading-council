@@ -1,0 +1,2941 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtest | LLM-TradeBot</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Theme variables mapping */
+        :root {
+            --bg-card: var(--panel-bg);
+            --border-color: var(--panel-border);
+            --accent: var(--accent-blue);
+            --success: var(--accent-green);
+            --danger: var(--accent-red);
+        }
+
+        /* Backtest specific styles */
+        .backtest-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .backtest-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .backtest-header h1 {
+            font-size: 1.8rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Live Status Indicator */
+        .live-status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #888;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-dot.running {
+            background: #00ff9d;
+            box-shadow: 0 0 8px rgba(0, 255, 157, 0.6);
+        }
+
+        .status-dot.paused {
+            background: #f0ad4e;
+            box-shadow: 0 0 8px rgba(240, 173, 78, 0.6);
+            animation: none;
+        }
+
+        .status-dot.stopped {
+            background: #888;
+            animation: none;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .live-status-text {
+            color: var(--text-secondary);
+        }
+
+        .live-status-text.running {
+            color: #00ff9d;
+        }
+
+        .live-status-text.paused {
+            color: #f0ad4e;
+        }
+
+        /* Form Section */
+        .backtest-form {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .form-title {
+            font-size: 1.1rem;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .run-btn {
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .run-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .run-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .stop-btn {
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: none;
+            /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+            animation: pulse-red 2s ease-in-out infinite;
+        }
+
+        .stop-btn.visible {
+            display: inline-flex !important;
+            /* Force visible when class is added */
+        }
+
+        @keyframes pulse-red {
+
+            0%,
+            100% {
+                box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 4px 20px rgba(220, 53, 69, 0.6);
+            }
+        }
+
+        .stop-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(220, 53, 69, 0.5);
+            background: linear-gradient(135deg, #c82333, #bd2130);
+        }
+
+        .stop-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .stop-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            animation: none;
+        }
+
+        /* Progress Section */
+        .progress-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .progress-section.active {
+            display: block;
+        }
+
+        .progress-bar-container {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #8b5cf6);
+            border-radius: 10px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .realtime-metrics {
+            background: rgba(0, 153, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .metric-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .metric-value.positive {
+            color: #10b981 !important;
+        }
+
+        .metric-value.negative {
+            color: #ef4444 !important;
+        }
+
+        .live-chart-container,
+        .live-trades-container {
+            background: rgba(0, 153, 255, 0.03);
+            border: 1px solid rgba(0, 153, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .live-chart-container {
+            height: 280px;
+            position: relative;
+        }
+
+        .live-chart-container canvas {
+            max-height: 240px !important;
+            width: 100% !important;
+        }
+
+        /* Specific styling for drawdown chart */
+        #liveDrawdownContainer {
+            background: rgba(255, 68, 68, 0.03);
+            border: 1px solid rgba(255, 68, 68, 0.1);
+        }
+
+        .live-chart-container h4,
+        .live-trades-container h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .trades-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .trades-table th {
+            background: var(--bg-secondary);
+            padding: 8px;
+            text-align: left;
+            font-size: 12px;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .trades-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 13px;
+        }
+
+        .trade-long {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .trade-short {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        /* Results Section */
+        .results-section {
+            display: none;
+        }
+
+        .results-section.active {
+            display: block;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .metric-card h3 {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .metric-item:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .metric-value.positive {
+            color: var(--success);
+        }
+
+        .metric-value.negative {
+            color: var(--danger);
+        }
+
+        /* Charts */
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-card h3 {
+            font-size: 1rem;
+            color: var(--text-primary);
+            margin-bottom: 15px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Trades Table */
+        .trades-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+
+        .trades-card h3 {
+            font-size: 1rem;
+            color: var(--text-primary);
+            margin-bottom: 15px;
+        }
+
+        .trades-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .trades-table th {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            padding: 10px 8px;
+            text-align: left;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+
+        .trades-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .trades-table tr:hover {
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .side-long {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .side-short {
+            color: var(--danger);
+            font-weight: 600;
+        }
+
+        /* History Section */
+        .history-section {
+            margin-top: 40px;
+        }
+
+        .history-title {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .history-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .history-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .history-item:hover {
+            border-color: var(--accent);
+        }
+
+        .history-info {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .history-main-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-info .symbol {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .history-info .run-time {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .history-detail-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .history-info .period {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .history-info .config {
+            font-size: 0.8rem;
+            color: var(--accent);
+        }
+
+        .history-stats {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: nowrap;
+            margin-top: 8px;
+        }
+
+        .history-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 70px;
+            text-align: center;
+        }
+
+        .history-stat .label {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .history-stat .value {
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .history-stat .value.positive {
+            color: var(--accent-green);
+        }
+
+        .history-stat .value.negative {
+            color: var(--accent-red);
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        /* Quick Select Buttons */
+        .quick-btn {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+
+        /* Symbol Checkboxes */
+        .symbol-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .symbol-checkbox:hover {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .symbol-checkbox input:checked+span,
+        .symbol-checkbox:has(input:checked) {
+            background: rgba(99, 102, 241, 0.15);
+            border-color: var(--accent);
+        }
+
+        .symbol-checkbox.major:has(input:checked) {
+            background: rgba(255, 193, 7, 0.15);
+            border-color: #ffc107;
+        }
+
+        .symbol-checkbox.ai500:has(input:checked) {
+            background: rgba(0, 255, 157, 0.15);
+            border-color: #00ff9d;
+        }
+
+        .symbol-checkbox.alts:has(input:checked) {
+            background: rgba(99, 102, 241, 0.15);
+            border-color: #6366f1;
+        }
+
+        /* Parallel Backtest Styles */
+        .parallel-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .parallel-slots {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+
+        .parallel-slot {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 15px;
+            position: relative;
+            transition: border-color 0.2s;
+        }
+
+        .parallel-slot:hover {
+            border-color: var(--accent);
+        }
+
+        .parallel-slot.running {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);
+        }
+
+        .parallel-slot.completed {
+            border-color: var(--accent-green);
+        }
+
+        .parallel-slot.error {
+            border-color: var(--accent-red);
+        }
+
+        .slot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .slot-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .slot-remove {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0 5px;
+            transition: color 0.2s;
+        }
+
+        .slot-remove:hover {
+            color: var(--accent-red);
+        }
+
+        .slot-config {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .slot-config select,
+        .slot-config input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .slot-progress {
+            margin-top: 10px;
+        }
+
+        .slot-progress-bar {
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .slot-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 3px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        .slot-status {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .slot-result {
+            margin-top: 10px;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            display: none;
+        }
+
+        .slot-result.show {
+            display: block;
+        }
+
+        .slot-result-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0;
+            font-size: 0.85rem;
+        }
+
+        .slot-result-value.positive {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        .slot-result-value.negative {
+            color: var(--accent-red);
+            font-weight: 600;
+        }
+
+        /* Tab Navigation Styles */
+        .backtest-tabs {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0;
+        }
+
+        .backtest-tab {
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .backtest-tab:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .backtest-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .backtest-tab .tab-status {
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 600;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .backtest-tab .tab-status.running {
+            background: rgba(0, 153, 255, 0.2);
+            color: #0099ff;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .backtest-tab .tab-status.completed {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        .backtest-tab .tab-close {
+            font-size: 0.9rem;
+            opacity: 0.5;
+            margin-left: 4px;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+
+        .backtest-tab .tab-close:hover {
+            opacity: 1;
+            background: rgba(255, 71, 87, 0.2);
+            color: var(--accent-red);
+        }
+
+        .add-tab-btn {
+            padding: 8px 16px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px dashed var(--accent);
+            color: var(--accent);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: all 0.2s;
+        }
+
+        .add-tab-btn:hover {
+            background: rgba(99, 102, 241, 0.2);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="backtest-container">
+        <!-- Header -->
+        <div class="backtest-header">
+            <div>
+                <a href="/" class="back-link" data-i18n="backtest.back">← Back to Dashboard</a>
+                <h1 data-i18n="backtest.title">🔬 Backtesting</h1>
+            </div>
+
+            <!-- Live Status Indicator -->
+            <div class="live-status-indicator" id="liveStatusIndicator" title="Live trading status">
+                <span class="status-dot stopped" id="liveStatusDot"></span>
+                <span class="live-status-text" id="liveStatusText">Live: --</span>
+            </div>
+
+            <button id="btn-lang" class="quick-btn" onclick="toggleLanguage()"
+                style="position:absolute; right:20px; top:20px;">
+                🌐 <span id="lang-text">中文</span>
+            </button>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="backtest-tabs" id="backtestTabs">
+            <button class="backtest-tab active" data-tab-id="1" onclick="switchTab(1)">
+                <span class="tab-icon">📊</span>
+                <span class="tab-name">Backtest 1</span>
+                <span class="tab-status">⏸️</span>
+            </button>
+            <button class="add-tab-btn" onclick="addBacktestTab()">➕ New Tab</button>
+        </div>
+
+        <!-- Tab Content Container -->
+        <div id="tabContents">
+            <!-- Tab 1 Content (Default) -->
+            <div class="tab-content active" id="tab-content-1">
+
+                <!-- Configuration Form -->
+                <div class="backtest-form">
+                    <div class="form-title" data-i18n="backtest.config">⚙️ Configuration</div>
+                    <div class="form-grid">
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;"
+                                onclick="toggleSymbols()">
+                                <span data-i18n="backtest.symbols">Symbols (Multi-Select)</span>
+                                <span id="symbolToggle">▶</span>
+                                <span id="selectedCount"
+                                    style="margin-left:auto; font-size:0.85rem; color:var(--text-secondary);">Selected:
+                                    1</span>
+                            </label>
+
+                            <div id="symbolSection" style="display:none; margin-top:10px;">
+                                <!-- Quick Select Buttons -->
+                                <div class="quick-select-btns"
+                                    style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                                    <button type="button" class="quick-btn" onclick="selectPreset('major')">🔥 <span
+                                            data-i18n="backtest.symbol.major">Major</span>
+                                        (5)</button>
+                                    <button type="button" class="quick-btn" onclick="selectPreset('ai500')">🤖 <span
+                                            data-i18n="backtest.symbol.ai500">AI500</span>
+                                        (10)</button>
+                                    <button type="button" class="quick-btn" onclick="selectPreset('alts')">💹 <span
+                                            data-i18n="backtest.symbol.alts">Alts</span> (10)</button>
+                                    <button type="button" class="quick-btn" onclick="selectPreset('all')">📊 <span
+                                            data-i18n="backtest.symbol.all">All</span></button>
+                                    <button type="button" class="quick-btn" onclick="selectPreset('none')">❌ <span
+                                            data-i18n="backtest.symbol.clear">Clear</span></button>
+                                </div>
+                                <!-- Symbol Checkboxes Grid -->
+                                <div class="symbol-grid" id="symbolGrid"
+                                    style="display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; max-height:200px; overflow-y:auto; padding:10px; background:var(--bg-secondary); border-radius:8px;">
+                                    <!-- Major -->
+                                    <label class="symbol-checkbox major"><input type="checkbox" value="BTCUSDT" checked>
+                                        BTCUSDT</label>
+                                    <label class="symbol-checkbox major"><input type="checkbox" value="ETHUSDT">
+                                        ETHUSDT</label>
+                                    <label class="symbol-checkbox major"><input type="checkbox" value="BNBUSDT">
+                                        BNBUSDT</label>
+                                    <label class="symbol-checkbox major"><input type="checkbox" value="SOLUSDT">
+                                        SOLUSDT</label>
+                                    <label class="symbol-checkbox major"><input type="checkbox" value="XRPUSDT">
+                                        XRPUSDT</label>
+                                    <!-- AI500 -->
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="LINKUSDT">
+                                        LINKUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="NEARUSDT">
+                                        NEARUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="FILUSDT">
+                                        FILUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="TAOUSDT">
+                                        TAOUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="WLDUSDT">
+                                        WLDUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="ICPUSDT">
+                                        ICPUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="ACTUSDT">
+                                        ACTUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="FETUSDT">
+                                        FETUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="GRTUSDT">
+                                        GRTUSDT</label>
+                                    <label class="symbol-checkbox ai500"><input type="checkbox" value="RENDERUSDT">
+                                        RENDERUSDT</label>
+                                    <!-- Alts -->
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="DOGEUSDT">
+                                        DOGEUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="ADAUSDT">
+                                        ADAUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="AVAXUSDT">
+                                        AVAXUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="DOTUSDT">
+                                        DOTUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="MATICUSDT">
+                                        MATICUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="LTCUSDT">
+                                        LTCUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="ATOMUSDT">
+                                        ATOMUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="APTUSDT">
+                                        APTUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="ARBUSDT">
+                                        ARBUSDT</label>
+                                    <label class="symbol-checkbox alts"><input type="checkbox" value="OPUSDT">
+                                        OPUSDT</label>
+                                </div>
+                            </div>
+
+                            <!-- Date Range Quick Select -->
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label data-i18n="backtest.daterange">📅 Date Range</label>
+                                <div id="dateRangeBtns" class="quick-select-btns"
+                                    style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <button type="button" class="quick-btn" onclick="setDateRange(1)"
+                                        data-i18n="backtest.date.1day">1 Day</button>
+                                    <button type="button" class="quick-btn" onclick="setDateRange(3)"
+                                        data-i18n="backtest.date.3days">3 Days</button>
+                                    <button type="button" class="quick-btn" onclick="setDateRange(7)"
+                                        data-i18n="backtest.date.7days">7 Days</button>
+                                    <button type="button" class="quick-btn" onclick="setDateRange(14)"
+                                        data-i18n="backtest.date.14days">14 Days</button>
+                                    <button type="button" class="quick-btn" onclick="setDateRange(30)"
+                                        data-i18n="backtest.date.30days">30 Days</button>
+                                </div>
+                            </div>
+
+                            <!-- Compact Config Row -->
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <div style="display:flex; flex-wrap:wrap; gap:15px; align-items:flex-end;">
+                                    <div style="flex:1; min-width:120px;">
+                                        <label data-i18n="backtest.start"
+                                            style="font-size:0.8rem; color:#888;">Start</label>
+                                        <input type="date" id="startDate" style="width:100%; padding:6px;">
+                                    </div>
+                                    <div style="flex:1; min-width:120px;">
+                                        <label data-i18n="backtest.end"
+                                            style="font-size:0.8rem; color:#888;">End</label>
+                                        <input type="date" id="endDate" style="width:100%; padding:6px;">
+                                    </div>
+                                    <div style="flex:0.8; min-width:100px;">
+                                        <label style="font-size:0.8rem; color:#888;"
+                                            data-i18n="backtest.label.capital">💰
+                                            Capital</label>
+                                        <input type="number" id="capital" value="10000" min="100"
+                                            style="width:100%; padding:6px;">
+                                    </div>
+                                    <div style="flex:0.6; min-width:90px;">
+                                        <label style="font-size:0.8rem; color:#888;" data-i18n="backtest.label.step">⏱
+                                            Step</label>
+                                        <select id="step" style="width:100%; padding:6px;">
+                                            <option value="1">5m</option>
+                                            <option value="3">15m</option>
+                                            <option value="12" selected>1h</option>
+                                        </select>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                            <!-- Advanced Settings -->
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;"
+                                    onclick="toggleAdvanced()">
+                                    <span data-i18n="backtest.advanced">⚙️ Advanced Settings</span> <span
+                                        id="advancedToggle">▶</span>
+                                </label>
+                            </div>
+
+                            <div id="advancedSettings" style="display:none; grid-column: 1 / -1;">
+                                <div class="form-grid" style="margin-top:10px;">
+                                    <div class="form-group">
+                                        <label data-i18n="backtest.leverage">Leverage</label>
+                                        <div style="display:flex; align-items:center; gap:10px;">
+                                            <input type="range" id="leverage" min="1" max="20" value="5" style="flex:1;"
+                                                oninput="updateLeverageDisplay()">
+                                            <span id="leverageDisplay"
+                                                style="min-width:45px; font-weight:600; color:var(--accent);">5x</span>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label data-i18n="backtest.margin">Margin Mode</label>
+                                        <select id="marginMode">
+                                            <option value="cross" selected>🔗 Cross (全仓)</option>
+                                            <option value="isolated">🔒 Isolated (逐仓)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label data-i18n="backtest.contract">Contract Type</label>
+                                        <select id="contractType">
+                                            <option value="linear" selected>💵 U本位 (Linear)</option>
+                                            <option value="inverse">🪙 币本位 (Inverse)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label data-i18n="backtest.feetier">Fee Tier</label>
+                                        <select id="feeTier">
+                                            <option value="vip0" selected>VIP0 (Maker 0.02% / Taker 0.04%)</option>
+                                            <option value="vip1">VIP1 (Maker 0.016% / Taker 0.04%)</option>
+                                            <option value="vip2">VIP2 (Maker 0.014% / Taker 0.035%)</option>
+                                            <option value="bnb">BNB Discount (10% off)</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label style="display:flex; align-items:center; gap:8px;">
+                                            <input type="checkbox" id="includeFunding" checked style="width:auto;">
+                                            <span data-i18n="backtest.funding.settlement">Include Funding Rate
+                                                Settlement</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="justify-content: flex-end;">
+                                <div style="display: flex; gap: 12px; align-items: center;">
+                                    <button class="run-btn" id="runBtn" onclick="runBacktest()"
+                                        data-i18n="backtest.run">
+                                        ▶️ Run Backtest
+                                    </button>
+                                    <button class="stop-btn" id="stopBtn" onclick="stopBacktest()">
+                                        ⏹️ Stop
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Section -->
+                    <div class="progress-section" id="progressSection">
+                        <div class="form-title">⏳ Running Backtest...</div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="progressBar"></div>
+                        </div>
+                        <div class="progress-text" id="progressText">Initializing...</div>
+                        <div class="progress-details" id="progressDetails"
+                            style="text-align: center; color: #888; font-size: 0.9em; margin-top: 5px;">
+                            <span id="timepointProgress"></span>
+                            <span id="estimatedTime" style="margin-left: 15px;"></span>
+                        </div>
+                        <!-- Real-time Metrics -->
+                        <div class="realtime-metrics" id="realtimeMetrics">
+                            <div class="metric-row">
+                                <span class="metric-label" data-i18n="metric.currentequity">Current Equity:</span>
+                                <span class="metric-value" id="currentEquity">$0.00</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label" data-i18n="metric.currentprofit">Profit:</span>
+                                <span class="metric-value" id="currentProfit" style="color: #888;">$0.00 (0.00%)</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label" data-i18n="metric.tradecount">Trades:</span>
+                                <span class="metric-value" id="liveTradeCount">0</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label" data-i18n="metric.livewrate">Win Rate:</span>
+                                <span class="metric-value" id="liveWinRate">0%</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label" data-i18n="metric.livemaxdd">Max DD:</span>
+                                <span class="metric-value negative" id="liveMaxDrawdown">0%</span>
+                            </div>
+                        </div>
+
+                        <!-- Live Equity Chart -->
+                        <div class="live-chart-container" id="liveChartContainer">
+                            <h4 data-i18n="backtest.liveequity">📈 Live Equity Curve</h4>
+                            <canvas id="liveEquityChart" width="600" height="200"></canvas>
+                        </div>
+
+                        <!-- Live Drawdown Chart -->
+                        <div class="live-chart-container" id="liveDrawdownContainer">
+                            <h4 data-i18n="backtest.livedrawdown">📉 Live Drawdown</h4>
+                            <canvas id="liveDrawdownChart" width="600" height="200"></canvas>
+                        </div>
+
+                        <!-- Live Trades -->
+                        <div class="live-trades-container" id="liveTradesContainer">
+                            <h4 data-i18n="backtest.livetrades">💼 Recent Trades</h4>
+                            <table class="trades-table">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="trade.time">Time</th>
+                                        <th data-i18n="trade.side">Side</th>
+                                        <th data-i18n="trade.price">Price</th>
+                                        <th data-i18n="trade.pnl">PnL</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="liveTradesBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Results Section -->
+                    <div class="results-section" id="resultsSection">
+                        <!-- Metrics Cards -->
+                        <div class="result-header"
+                            style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                            <h2 style="margin:0;">Backtest Result</h2>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span id="resultDurationDisplay"
+                                    style="background:var(--bg-secondary); color:var(--text-secondary); padding:4px 8px; border-radius:4px; font-size:0.9em; display:none;">
+                                    ⏱️ <span id="durationText"></span>
+                                </span>
+                                <span id="resultIdDisplay"
+                                    style="background:var(--accent-dim); color:var(--accent); padding:4px 8px; border-radius:4px; font-weight:600; display:none;"></span>
+                            </div>
+                        </div>
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <h3 data-i18n="backtest.results">📊 回测结果</h3>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.finalequity">Final Equity</span>
+                                    <span class="metric-value" id="finalEquity"
+                                        style="font-size: 1.2em; font-weight: 700;">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.profit">Profit/Loss</span>
+                                    <span class="metric-value" id="profitAmount">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.return">总收益率</span>
+                                    <span class="metric-value" id="totalReturn"
+                                        style="font-size: 1.1em; font-weight: 600;">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.maxdd">最大回撤</span>
+                                    <span class="metric-value negative" id="maxDrawdown"
+                                        style="font-size: 1.1em; font-weight: 600;">-</span>
+                                </div>
+                            </div>
+
+                            <div class="metric-card">
+                                <h3><span data-i18n="metric.section.risk">⚖️ Risk Metrics</span></h3>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.sharpe">Sharpe Ratio</span>
+                                    <span class="metric-value" id="sharpeRatio">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.sortino">Sortino Ratio</span>
+                                    <span class="metric-value" id="sortinoRatio">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.volatility">Volatility</span>
+                                    <span class="metric-value" id="volatility">-</span>
+                                </div>
+                            </div>
+
+                            <div class="metric-card">
+                                <h3><span data-i18n="metric.section.trading">📊 Trading</span></h3>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.trades">Total Trades</span>
+                                    <span class="metric-value" id="totalTrades">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.winrate">Win Rate</span>
+                                    <span class="metric-value" id="winRate">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.pf">Profit Factor</span>
+                                    <span class="metric-value" id="profitFactor">-</span>
+                                </div>
+                            </div>
+
+                            <div class="metric-card">
+                                <h3><span data-i18n="metric.section.longshort">🐂🐻 Long/Short</span></h3>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.longtrades">Long Trades</span>
+                                    <span class="metric-value" id="longTrades">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.shorttrades">Short Trades</span>
+                                    <span class="metric-value" id="shortTrades">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label" data-i18n="metric.avghold">Avg Hold Time</span>
+                                    <span class="metric-value" id="avgHoldTime">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Charts -->
+                        <div class="chart-card">
+                            <h3 data-i18n="backtest.equity">📈 Equity Curve</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="equityChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card">
+                            <h3 data-i18n="backtest.drawdown">📉 Drawdown</h3>
+                            <div class="chart-wrapper">
+                                <canvas id="drawdownChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Trades Table -->
+                        <div class="trades-card">
+                            <h3 data-i18n="backtest.trades">📋 Trade History</h3>
+                            <table class="trades-table">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="trade.time">Time</th>
+                                        <th data-i18n="trade.side">Side</th>
+                                        <th data-i18n="trade.entry">Entry</th>
+                                        <th data-i18n="trade.exit">Exit</th>
+                                        <th data-i18n="trade.pnl">PnL</th>
+                                        <th data-i18n="trade.pnlpct">PnL %</th>
+                                        <th data-i18n="trade.duration">Hold Time</th>
+                                        <th data-i18n="trade.reason">Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tradesTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- Close tab-content-1 -->
+        </div><!-- Close tabContents -->
+
+        <!-- History Section -->
+        <div class="history-section">
+            <div class="history-title" data-i18n="backtest.history">📜 Recent Backtests</div>
+            <div class="history-list" id="historyList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📊</div>
+                    <p data-i18n="backtest.nohistory">No backtest history yet. Run your first backtest
+                        above!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- i18n Support -->
+    <script src="/static/i18n.js"></script>
+    <script>
+        // Language functions
+        let currentLang = localStorage.getItem('botLang') || 'en';
+
+        function t(key) {
+            const dict = window.i18n ? window.i18n[currentLang] : {};
+            return dict[key] || key;
+        }
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'zh' : 'en';
+            localStorage.setItem('botLang', currentLang);
+            applyLanguage();
+            if (typeof updateSelectedCount === 'function') updateSelectedCount();
+        }
+
+        function applyLanguage() {
+            const t = window.i18n ? window.i18n[currentLang] : {};
+
+            // Update button text
+            const langText = document.getElementById('lang-text');
+            if (langText) {
+                langText.textContent = currentLang === 'en' ? '中文' : 'English';
+            }
+
+            // Apply to all data-i18n elements
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (t[key]) {
+                    el.textContent = t[key];
+                }
+            });
+        }
+
+        // Apply on load
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(applyLanguage, 100);
+        });
+    </script>
+
+    <script>
+        let equityChartInstance = null;
+        let drawdownChartInstance = null;
+        let backtestHistory = JSON.parse(localStorage.getItem('backtestHistory') || '[]');
+
+        // ==================== TAB MANAGEMENT ====================
+        let currentTabId = 1;
+        let tabCounter = 1;
+        const MAX_TABS = 5;
+        const backtestTabs = new Map(); // tabId -> {status, controller, config}
+
+        backtestTabs.set(1, { status: 'idle', controller: null, config: null });
+
+        // Helper to get element for current tab
+        function getScopedId(id, tabId = currentTabId) {
+            return tabId === 1 ? id : `${id}-tab${tabId}`;
+        }
+
+        function getScopedElement(id, tabId = currentTabId) {
+            return document.getElementById(getScopedId(id, tabId));
+        }
+
+        function switchTab(tabId) {
+            currentTabId = tabId;
+
+            // Update tab buttons
+            document.querySelectorAll('.backtest-tab').forEach(tab => {
+                tab.classList.toggle('active', parseInt(tab.dataset.tabId) === tabId);
+            });
+
+            // Update tab contents - find by exact ID match
+            document.querySelectorAll('#tabContents > .tab-content').forEach(content => {
+                // Extract tab ID from content ID (format: "tab-content-N")
+                const match = content.id.match(/^tab-content-(\d+)$/);
+                if (match) {
+                    const contentTabId = parseInt(match[1]);
+                    content.classList.toggle('active', contentTabId === tabId);
+                }
+            });
+
+            console.log(`🔄 Switched to tab ${tabId}`);
+        }
+
+        function addBacktestTab() {
+            if (tabCounter >= MAX_TABS) {
+                alert(`Maximum ${MAX_TABS} tabs allowed`);
+                return;
+            }
+
+            tabCounter++;
+            const newTabId = tabCounter;
+
+            // Add to tracking
+            backtestTabs.set(newTabId, { status: 'idle', controller: null, config: null });
+
+            // Create tab button
+            const tabsContainer = document.getElementById('backtestTabs');
+            const addBtn = tabsContainer.querySelector('.add-tab-btn');
+
+            const tabBtn = document.createElement('button');
+            tabBtn.className = 'backtest-tab';
+            tabBtn.dataset.tabId = newTabId;
+            tabBtn.onclick = () => switchTab(newTabId);
+            tabBtn.innerHTML = `
+                <span class="tab-icon">📊</span>
+                <span class="tab-name">Backtest ${newTabId}</span>
+                <span class="tab-status">⏸️</span>
+                <span class="tab-close" onclick="event.stopPropagation(); closeTab(${newTabId})">✕</span>
+            `;
+            tabsContainer.insertBefore(tabBtn, addBtn);
+
+            // Clone tab content from tab 1
+            const originalContent = document.getElementById('tab-content-1');
+            const newContent = originalContent.cloneNode(true);
+
+            // Update IDs in cloned content FIRST (before setting parent ID)
+            // This ensures we only modify child elements, not the container
+            newContent.querySelectorAll('[id]').forEach(el => {
+                // Replace -tab suffix if exists, or add new suffix
+                const baseId = el.id.replace(/-tab\d+$/, '');
+                el.id = `${baseId}-tab${newTabId}`;
+            });
+
+            // Reset all input values to defaults (prevent inheriting Tab 1's values)
+            newContent.querySelectorAll('input[type="text"], input[type="number"], input[type="date"]').forEach(input => {
+                // Keep the default value from HTML, not the current value from Tab 1
+                input.value = input.defaultValue || '';
+            });
+
+            // Reset all checkboxes to unchecked
+            newContent.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+
+            // Reset all select elements to their first option
+            newContent.querySelectorAll('select').forEach(select => {
+                select.selectedIndex = 0;
+            });
+
+            // Specific default overrides for new tabs
+            const stepSelect = newContent.querySelector('[id^="step"]');
+            if (stepSelect) {
+                stepSelect.value = "12"; // Default to 1h
+            }
+
+            // Reset UI state to idle (prevent inheriting "running" state from Tab 1)
+            // 1. Reset Run button
+            const runBtn = newContent.querySelector('[id^="runBtn"]');
+            if (runBtn) {
+                runBtn.disabled = false;
+                runBtn.innerHTML = '▶️ Run Backtest';
+            }
+
+            // 2. Hide Stop button
+            const stopBtn = newContent.querySelector('[id^="stopBtn"]');
+            if (stopBtn) {
+                stopBtn.classList.remove('visible');
+                stopBtn.disabled = true;
+            }
+
+            // 3. Hide Progress section
+            const progressSection = newContent.querySelector('[id^="progressSection"]');
+            if (progressSection) {
+                progressSection.classList.remove('active');
+            }
+
+            // 4. Hide Results section
+            const resultsSection = newContent.querySelector('[id^="resultsSection"]');
+            if (resultsSection) {
+                resultsSection.classList.remove('active');
+            }
+
+            // 5. Reset progress bar
+            const progressBar = newContent.querySelector('[id^="progressBar"]');
+            if (progressBar) {
+                progressBar.style.width = '0%';
+            }
+
+            // 6. Reset progress text
+            const progressText = newContent.querySelector('[id^="progressText"]');
+            if (progressText) {
+                progressText.textContent = '';
+            }
+
+            // 7. Hide realtime metrics
+            const realtimeMetrics = newContent.querySelector('[id^="realtimeMetrics"]');
+            if (realtimeMetrics) {
+                realtimeMetrics.style.display = 'none';
+            }
+
+            // 8. Hide live chart containers
+            const liveChartContainer = newContent.querySelector('[id^="liveChartContainer"]');
+            if (liveChartContainer) {
+                liveChartContainer.style.display = 'none';
+            }
+
+            const liveDrawdownContainer = newContent.querySelector('[id^="liveDrawdownContainer"]');
+            if (liveDrawdownContainer) {
+                liveDrawdownContainer.style.display = 'none';
+            }
+
+            const liveTradesContainer = newContent.querySelector('[id^="liveTradesContainer"]');
+            if (liveTradesContainer) {
+                liveTradesContainer.style.display = 'none';
+            }
+
+            // NOW set the correct container ID (after child IDs are updated)
+            newContent.id = `tab-content-${newTabId}`;
+            newContent.classList.remove('active');
+
+            // Add to DOM
+            document.getElementById('tabContents').appendChild(newContent);
+
+            // Switch to new tab
+            switchTab(newTabId);
+
+            // Initialize the new tab (attach listeners, set defaults)
+            initTab(newTabId);
+
+            // Update add button if max reached
+            if (tabCounter >= MAX_TABS) {
+                addBtn.disabled = true;
+                addBtn.textContent = `Max ${MAX_TABS} Tabs`;
+            }
+        }
+
+        function closeTab(tabId) {
+            if (tabId === 1) {
+                alert('Cannot close the first tab');
+                return;
+            }
+
+            const tabData = backtestTabs.get(tabId);
+            if (tabData && tabData.controller) {
+                tabData.controller.abort();
+            }
+            backtestTabs.delete(tabId);
+
+            // Remove tab button
+            const tabBtn = document.querySelector(`.backtest-tab[data-tab-id="${tabId}"]`);
+            if (tabBtn) tabBtn.remove();
+
+            // Remove tab content
+            const tabContent = document.getElementById(`tab-content-${tabId}`);
+            if (tabContent) tabContent.remove();
+
+            // Switch to tab 1 if current tab was closed
+            if (currentTabId === tabId) {
+                switchTab(1);
+            }
+
+            // Enable add button
+            const addBtn = document.querySelector('.add-tab-btn');
+            if (addBtn) {
+                addBtn.disabled = false;
+                addBtn.textContent = '➕ New Tab';
+            }
+        }
+
+        function updateTabStatus(tabId, status, icon) {
+            const tabBtn = document.querySelector(`.backtest-tab[data-tab-id="${tabId}"]`);
+            if (tabBtn) {
+                const statusSpan = tabBtn.querySelector('.tab-status');
+                if (statusSpan) statusSpan.textContent = icon;
+            }
+
+            const tabData = backtestTabs.get(tabId);
+            if (tabData) tabData.status = status;
+        }
+
+        // Preset symbol groups
+        const PRESETS = {
+            major: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT'],
+            ai500: ['LINKUSDT', 'NEARUSDT', 'FILUSDT', 'TAOUSDT', 'WLDUSDT', 'ICPUSDT', 'ACTUSDT', 'FETUSDT', 'GRTUSDT', 'RENDERUSDT'],
+            alts: ['DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'MATICUSDT', 'LTCUSDT', 'ATOMUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT']
+        };
+
+        // Select preset group
+        function selectPreset(preset) {
+            const gridId = getScopedId('symbolGrid');
+            const checkboxes = document.querySelectorAll(`#${gridId} input[type="checkbox"]`);
+
+            if (preset === 'none') {
+                checkboxes.forEach(cb => cb.checked = false);
+            } else if (preset === 'all') {
+                checkboxes.forEach(cb => cb.checked = true);
+            } else {
+                const symbols = PRESETS[preset] || [];
+                checkboxes.forEach(cb => {
+                    cb.checked = symbols.includes(cb.value);
+                });
+            }
+            updateSelectedCount();
+        }
+
+        // Get all selected symbols
+        function getSelectedSymbols() {
+            const gridId = getScopedId('symbolGrid');
+            const checkboxes = document.querySelectorAll(`#${gridId} input[type="checkbox"]:checked`);
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+
+        // Toggle symbols section visibility
+        function toggleSymbols() {
+            const section = getScopedElement('symbolSection');
+            const toggle = getScopedElement('symbolToggle');
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                section.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        }
+
+        // Old parallel slot functions removed - using tab-based approach now
+
+        // Update selected count display
+        function updateSelectedCount() {
+            const count = getSelectedSymbols().length;
+            const el = getScopedElement('selectedCount');
+            if (el) el.textContent = t('backtest.symbol.selected') + ': ' + count;
+        }
+
+        // Toggle advanced settings visibility
+        function toggleAdvanced() {
+            const panel = getScopedElement('advancedSettings');
+            const toggle = getScopedElement('advancedToggle');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                panel.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        }
+
+        // Update leverage display
+        function updateLeverageDisplay() {
+            const value = getScopedElement('leverage').value;
+            getScopedElement('leverageDisplay').textContent = value + 'x';
+        }
+
+        // Set date range (days from today)
+        function setDateRange(days) {
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(startDate.getDate() - days);
+
+            getScopedElement('endDate').value = today.toISOString().split('T')[0];
+            getScopedElement('startDate').value = startDate.toISOString().split('T')[0];
+
+            // Update button highlighting
+            const btnsId = getScopedId('dateRangeBtns');
+            const buttons = document.querySelectorAll(`#${btnsId} .quick-btn`);
+            buttons.forEach(btn => {
+                // Reset all buttons to default style
+                btn.style.background = 'rgba(99, 102, 241, 0.1)';
+                btn.style.color = 'var(--text-primary)';
+            });
+
+            // Highlight the clicked button based on days value
+            const buttonIndex = [1, 3, 7, 14, 30].indexOf(days);
+            if (buttonIndex !== -1 && buttons[buttonIndex]) {
+                buttons[buttonIndex].style.background = 'var(--accent)';
+                buttons[buttonIndex].style.color = '#000';
+            }
+        }
+
+
+
+        // Initialize a specific tab
+        function initTab(tabId) {
+            // Note: We depend on currentTabId being set to tabId for some helpers if we don't pass it explicitely,
+            // but helpers like setDateRange use currentTabId implicitly.
+            // Since we call switchTab(newTabId) before initTab, this is safe.
+
+            // 1. Set default date range
+            // This ensures inputs are populated even if cloneNode didn't copy values
+            setDateRange(1);
+
+            // 2. Add change listeners to checkboxes
+            const gridId = getScopedId('symbolGrid', tabId);
+            const checkboxes = document.querySelectorAll(`#${gridId} input[type="checkbox"]`);
+            checkboxes.forEach(cb => {
+                // Remove potential existing listeners (though clean clones shouldn't have them) just in case
+                cb.removeEventListener('change', updateSelectedCount);
+                cb.addEventListener('change', updateSelectedCount);
+            });
+
+            // 3. Update selected count for this tab
+            updateSelectedCount();
+        }
+
+        // Add change listener to all checkboxes
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize the first tab
+            initTab(1);
+
+            // Render history
+            renderHistory();
+
+            // Check for active backtests and reconnect
+            checkActiveBacktests();
+
+            // Start live status polling
+            checkLiveStatus();
+            setInterval(checkLiveStatus, 5000); // Poll every 5 seconds
+        });
+
+        // Check live trading status and update indicator
+        async function checkLiveStatus() {
+            try {
+                const response = await fetch('/api/status', { credentials: 'include' });
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const dot = document.getElementById('liveStatusDot');
+                const text = document.getElementById('liveStatusText');
+
+                if (!dot || !text) return;
+
+                const mode = data.system?.mode || 'Stopped';
+
+                // Update dot class
+                dot.className = 'status-dot';
+                text.className = 'live-status-text';
+
+                if (mode === 'Running') {
+                    dot.classList.add('running');
+                    text.classList.add('running');
+                    text.textContent = 'Live: Running';
+                } else if (mode === 'Paused') {
+                    dot.classList.add('paused');
+                    text.classList.add('paused');
+                    text.textContent = 'Live: Paused';
+                } else {
+                    dot.classList.add('stopped');
+                    text.textContent = 'Live: Stopped';
+                }
+            } catch (e) {
+                console.error('Failed to check live status:', e);
+            }
+        }
+
+        // Check for active backtests and reconnect to their streams
+        async function checkActiveBacktests() {
+            try {
+                const response = await fetch('/api/backtest/active');
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const activeBacktests = data.active_backtests || [];
+
+                if (activeBacktests.length === 0) return;
+
+                console.log(`🔄 Found ${activeBacktests.length} active backtest(s), reconnecting...`);
+
+                for (const bt of activeBacktests) {
+                    if (bt.status === 'running') {
+                        // Check if this is the main backtest (not parallel)
+                        // For now, reconnect to the main progress section
+                        reconnectToBacktest(bt);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to check active backtests:', error);
+            }
+        }
+
+        async function reconnectToBacktest(backtestInfo) {
+            const progressSection = document.getElementById('progressSection');
+            const runBtn = document.getElementById('runBtn');
+            const stopBtn = document.getElementById('stopBtn');
+
+            // Show progress section
+            progressSection.classList.add('active');
+            runBtn.disabled = true;
+            runBtn.innerHTML = '<span class="spinner"></span> Running...';
+            stopBtn.classList.add('visible');
+
+            // Update initial progress from cached data
+            if (backtestInfo.latest_data) {
+                const data = backtestInfo.latest_data;
+                updateProgress(data.percent || backtestInfo.progress, `Reconnected - ${data.current || 0}/${data.total || 0}`);
+                if (data.current_equity) {
+                    document.getElementById('currentEquity').textContent = `$${data.current_equity.toFixed(2)}`;
+                }
+            }
+
+            // Subscribe to the stream
+            try {
+                const response = await fetch(`/api/backtest/subscribe/${backtestInfo.session_id}`);
+                if (!response.ok) {
+                    console.error('Failed to subscribe to backtest');
+                    return;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const msg = JSON.parse(line);
+
+                            if (msg.type === 'keepalive') continue;
+
+                            if (msg.type === 'progress') {
+                                updateProgress(msg.percent, `Reconnected - ${msg.current}/${msg.total}`);
+                                updateLiveMetrics(msg);
+                            }
+
+                            if (msg.type === 'result') {
+                                displayResults(msg.data);
+                                runBtn.disabled = false;
+                                runBtn.innerHTML = '▶️ Run Backtest';
+                                stopBtn.classList.remove('visible');
+                                progressSection.classList.remove('active');
+                            }
+
+                            if (msg.type === 'error') {
+                                alert('Backtest error: ' + msg.message);
+                                runBtn.disabled = false;
+                                runBtn.innerHTML = '▶️ Run Backtest';
+                                stopBtn.classList.remove('visible');
+                            }
+                        } catch (e) {
+                            console.warn('Parse error:', e);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Reconnection failed:', error);
+                runBtn.disabled = false;
+                runBtn.innerHTML = '▶️ Run Backtest';
+                stopBtn.classList.remove('visible');
+            }
+        }
+
+        // Global AbortController for cancellation
+        // Live visualization variables moved to backtestTabs state
+
+
+        // Initialize live equity chart
+        function initLiveChart(tabId = currentTabId) {
+            const tabState = backtestTabs.get(tabId);
+            if (!tabState) return;
+
+            // Destroy existing chart if it exists
+            if (tabState.liveEquityChart) {
+                tabState.liveEquityChart.destroy();
+                tabState.liveEquityChart = null;
+            }
+
+            const canvas = getScopedElement('liveEquityChart', tabId);
+            if (!canvas) {
+                console.error('Live equity chart canvas not found');
+                return;
+            }
+
+            const ctx = canvas.getContext('2d');
+            tabState.liveEquityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '净值',
+                        data: [],
+                        borderColor: '#0099ff',
+                        backgroundColor: 'rgba(0, 153, 255, 0.15)',
+                        borderWidth: 2.5,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#0099ff',
+                        pointHoverBorderColor: '#fff',
+                        pointHoverBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: '#0099ff',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function (context) {
+                                    return '净值: $' + context.parsed.y.toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                maxTicksLimit: 8,
+                                color: '#888',
+                                font: { size: 11 }
+                            }
+                        },
+                        y: {
+                            display: true,
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#0099ff',
+                                font: { size: 11, weight: '600' },
+                                callback: function (value) {
+                                    return '$' + value.toFixed(0);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initialize live drawdown chart
+        function initLiveDrawdownChart(tabId = currentTabId) {
+            const tabState = backtestTabs.get(tabId);
+            if (!tabState) return;
+
+            // Destroy existing chart if it exists
+            if (tabState.liveDrawdownChart) {
+                tabState.liveDrawdownChart.destroy();
+                tabState.liveDrawdownChart = null;
+            }
+
+            const canvas = getScopedElement('liveDrawdownChart', tabId);
+            if (!canvas) {
+                console.error('Live drawdown chart canvas not found');
+                return;
+            }
+
+            const ctx = canvas.getContext('2d');
+            tabState.liveDrawdownChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '回撤 %',
+                        data: [],
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        borderWidth: 2.5,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#ef4444',
+                        pointHoverBorderColor: '#fff',
+                        pointHoverBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: '#ef4444',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function (context) {
+                                    return '回撤: ' + context.parsed.y.toFixed(2) + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                maxTicksLimit: 8,
+                                color: '#888',
+                                font: { size: 11 }
+                            }
+                        },
+                        y: {
+                            display: true,
+                            reverse: false,
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#ef4444',
+                                font: { size: 11, weight: '600' },
+                                callback: function (value) {
+                                    return value.toFixed(1) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update live chart with new equity point
+        function updateLiveChart(equityPoint, tabId = currentTabId) {
+            const tabState = backtestTabs.get(tabId);
+            if (!tabState) return;
+
+            if (!tabState.liveEquityChart) {
+                initLiveChart(tabId);
+                getScopedElement('liveChartContainer', tabId).style.display = 'block';
+            }
+
+            if (!tabState.liveEquityChart) return;
+
+            const time = new Date(equityPoint.timestamp).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            tabState.liveEquityChart.data.labels.push(time);
+            tabState.liveEquityChart.data.datasets[0].data.push(equityPoint.total_equity);
+
+            // Limit data points to prevent performance issues (max 150)
+            const maxPoints = 150;
+            if (tabState.liveEquityChart.data.labels.length > maxPoints) {
+                tabState.liveEquityChart.data.labels.shift();
+                tabState.liveEquityChart.data.datasets[0].data.shift();
+            }
+
+            // Use 'none' mode for better performance (no animation)
+            tabState.liveEquityChart.update('none');
+        }
+
+        // Update live drawdown chart with new equity point
+        function updateLiveDrawdownChart(equityPoint, tabId = currentTabId) {
+            const tabState = backtestTabs.get(tabId);
+            if (!tabState) return;
+
+            if (!tabState.liveDrawdownChart) {
+                initLiveDrawdownChart(tabId);
+                getScopedElement('liveDrawdownContainer', tabId).style.display = 'block';
+            }
+
+            if (!tabState.liveDrawdownChart) return;
+
+            const time = new Date(equityPoint.timestamp).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            tabState.liveDrawdownChart.data.labels.push(time);
+            // Ensure drawdown is always negative or zero for proper display
+            const drawdownValue = Math.abs(equityPoint.drawdown_pct);
+            tabState.liveDrawdownChart.data.datasets[0].data.push(drawdownValue);
+
+            // Limit data points to prevent performance issues (max 150)
+            const maxPoints = 150;
+            if (tabState.liveDrawdownChart.data.labels.length > maxPoints) {
+                tabState.liveDrawdownChart.data.labels.shift();
+                tabState.liveDrawdownChart.data.datasets[0].data.shift();
+            }
+
+            // Use 'none' mode for better performance (no animation)
+            tabState.liveDrawdownChart.update('none');
+        }
+
+        // Update live trades table
+        function updateLiveTrades(trades, tabId = currentTabId) {
+            const tabState = backtestTabs.get(tabId);
+            if (!tabState) return;
+
+            const container = getScopedElement('liveTradesContainer', tabId);
+            const tbody = getScopedElement('liveTradesBody', tabId);
+
+            container.style.display = 'block';
+            tbody.innerHTML = '';
+
+            trades.forEach(trade => {
+                const row = tbody.insertRow();
+                const time = new Date(trade.timestamp).toLocaleTimeString();
+                const sideClass = trade.side === 'long' ? 'trade-long' : 'trade-short';
+                const pnlClass = trade.pnl >= 0 ? 'positive' : 'negative';
+
+                row.innerHTML = `
+                        <td>${time}</td>
+                        <td class="${sideClass}">${trade.side.toUpperCase()}</td>
+                        <td>$${trade.price.toFixed(2)}</td>
+                        <td class="${pnlClass}">${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</td>
+                    `;
+            });
+        }
+
+        // Reset live visualization
+        function resetLiveVisualization(tabId = currentTabId) {
+            const tabState = backtestTabs.get(tabId);
+            if (!tabState) return;
+
+            if (tabState.liveEquityChart) {
+                tabState.liveEquityChart.destroy();
+                tabState.liveEquityChart = null;
+            }
+
+            if (tabState.liveDrawdownChart) {
+                tabState.liveDrawdownChart.destroy();
+                tabState.liveDrawdownChart = null;
+            }
+
+            getScopedElement('realtimeMetrics', tabId).style.display = 'none';
+            getScopedElement('liveChartContainer', tabId).style.display = 'none';
+            getScopedElement('liveDrawdownContainer', tabId).style.display = 'none';
+            getScopedElement('liveTradesContainer', tabId).style.display = 'none';
+            const tbody = getScopedElement('liveTradesBody', tabId);
+            if (tbody) tbody.innerHTML = '';
+        }
+
+        // Abort controllers are now stored per-tab in backtestTabs Map
+
+        function stopBacktest() {
+            const tabState = backtestTabs.get(currentTabId);
+            if (tabState && tabState.controller) {
+                tabState.controller.abort();
+                // UI reset is handled in the catch block of runBacktest
+            }
+        }
+
+        async function runBacktest() {
+            const activeTabId = currentTabId; // Capture the tab ID where run was clicked
+            const btn = getScopedElement('runBtn', activeTabId);
+            const stopBtn = getScopedElement('stopBtn', activeTabId);
+            const progressSection = getScopedElement('progressSection', activeTabId);
+            const resultsSection = getScopedElement('resultsSection', activeTabId);
+
+            // Create new AbortController for this tab
+            const tabState = backtestTabs.get(activeTabId);
+            if (!tabState) {
+                console.error('Tab state not found for tabId:', activeTabId);
+                return;
+            }
+            tabState.controller = new AbortController();
+
+            // Get selected symbols (helper needs update, but we can just use scoped query here or rely on currentTabId matching since we're in the start block)
+            // But selectPreset etc affect current tab. runBacktest reads form.
+            // Let's rely on getScopedElement with activeTabId to read inputs.
+
+            // Get symbols manually to ensure correct tab
+            const gridId = getScopedId('symbolGrid', activeTabId);
+            const checkboxes = document.querySelectorAll(`#${gridId} input[type="checkbox"]:checked`);
+            const symbols = Array.from(checkboxes).map(cb => cb.value);
+
+            if (symbols.length === 0) {
+                alert('Please select at least one symbol');
+                return;
+            }
+
+            const config = {
+                symbol: symbols[0],  // Primary symbol for API
+                symbols: symbols,    // All selected symbols for display
+                start_date: getScopedElement('startDate', activeTabId).value,
+                end_date: getScopedElement('endDate', activeTabId).value,
+                initial_capital: parseFloat(getScopedElement('capital', activeTabId).value),
+                step: parseInt(getScopedElement('step', activeTabId).value),
+                stop_loss_pct: 0, // AI Autonomous
+                take_profit_pct: 0, // AI Autonomous
+                // Advanced settings
+                leverage: parseInt(getScopedElement('leverage', activeTabId)?.value || 10),
+                margin_mode: getScopedElement('marginMode', activeTabId)?.value || 'cross',
+                contract_type: getScopedElement('contractType', activeTabId)?.value || 'linear',
+                fee_tier: getScopedElement('feeTier', activeTabId)?.value || 'vip0',
+                include_funding: getScopedElement('includeFunding', activeTabId)?.checked ?? true,
+                strategy_mode: 'agent', // Forced by user request
+                use_llm: true,  // Enable LLM calls in backtest
+                llm_cache: true,  // Cache LLM responses
+                llm_throttle_ms: 100  // Throttle between LLM calls
+            };
+
+            // Debug: Log config to console
+            console.log('📋 Backtest Config:', config);
+            console.log('📊 Step value:', config.step, '(expected: 12 for 1h)');
+
+            // Validate dates
+            if (new Date(config.start_date) >= new Date(config.end_date)) {
+                alert('Start date must be before end date');
+                return;
+            }
+
+            // Update UI
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Running...';
+
+            // Show stop button with class toggle (more reliable than inline style)
+            console.log('🔍 Showing stop button...');
+            console.log('Stop button element:', stopBtn);
+            console.log('Stop button classes before:', stopBtn.className);
+            stopBtn.classList.add('visible');
+            stopBtn.disabled = false;
+            console.log('Stop button classes after:', stopBtn.className);
+
+            progressSection.classList.add('active');
+            resultsSection.classList.remove('active');
+
+            // Update progress
+            updateProgress(5, 'Initializing...', activeTabId);
+
+            try {
+                const response = await fetch('/api/backtest/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config),
+                    signal: tabState.controller.signal  // Add abort signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                // Stream Reader
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let consecutiveErrors = 0;
+                const MAX_CONSECUTIVE_ERRORS = 5;
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                        console.log('✅ Stream completed normally');
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+
+                    // Keep the last partial line in buffer
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+
+                        try {
+                            const msg = JSON.parse(line);
+                            consecutiveErrors = 0;  // Reset error counter on successful parse
+
+                            if (msg.type === 'progress') {
+                                // Update progress bar
+                                const percent = msg.progress || msg.percent || 0;
+                                const current = msg.current_timepoint || 0;
+                                const total = msg.total_timepoints || 0;
+
+                                updateProgress(percent, `Running... ${percent.toFixed(1)}%`, activeTabId);
+
+                                // Update timepoint progress
+                                if (current && total) {
+                                    getScopedElement('timepointProgress', activeTabId).textContent =
+                                        `📊 ${current}/${total} timepoints`;
+
+                                    // Calculate estimated remaining time
+                                    const remaining = total - current;
+                                    const estimatedMinutes = Math.ceil(remaining * 72 / 60); // 72 seconds per timepoint
+                                    getScopedElement('estimatedTime', activeTabId).textContent =
+                                        `⏱️ Est. ${estimatedMinutes}min remaining`;
+                                }
+
+                                // Update basic profit display
+                                if (msg.current_equity !== undefined && msg.current_equity !== null) {
+                                    const metricsDiv = getScopedElement('realtimeMetrics', activeTabId);
+                                    if (metricsDiv) metricsDiv.style.display = 'flex';
+
+                                    getScopedElement('currentEquity', activeTabId).textContent =
+                                        `$${msg.current_equity.toFixed(2)}`;
+
+                                    const profitEl = getScopedElement('currentProfit', activeTabId);
+                                    const profit = msg.profit || 0;
+                                    const profitPct = msg.profit_pct || 0;
+
+                                    if (profitEl) {
+                                        profitEl.textContent =
+                                            `${profit >= 0 ? '+' : ''}$${profit.toFixed(2)} (${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(2)}%)`;
+                                        profitEl.className = 'metric-value ' + (profit >= 0 ? 'positive' : 'negative');
+                                    }
+                                }
+
+                                // Update live equity chart
+                                if (msg.equity_point) {
+                                    updateLiveChart(msg.equity_point, activeTabId);
+                                    updateLiveDrawdownChart(msg.equity_point, activeTabId);
+                                }
+
+                                // Update live metrics
+                                if (msg.metrics) {
+                                    getScopedElement('liveTradeCount', activeTabId).textContent = msg.metrics.total_trades || 0;
+                                    getScopedElement('liveWinRate', activeTabId).textContent =
+                                        `${(msg.metrics.win_rate || 0).toFixed(1)}%`;
+                                    getScopedElement('liveMaxDrawdown', activeTabId).textContent =
+                                        `${(msg.metrics.max_drawdown_pct || 0).toFixed(2)}%`;
+                                }
+
+                                // Update live trades
+                                if (msg.recent_trades && msg.recent_trades.length > 0) {
+                                    updateLiveTrades(msg.recent_trades, activeTabId);
+                                }
+                            } else if (msg.type === 'result') {
+                                // Final result
+                                const result = msg.data;
+                                progressSection.classList.remove('active');
+                                resetLiveVisualization(activeTabId);
+                                resultsSection.classList.add('active');
+
+                                // Use i18n for text if available, fallback to English
+                                const t = window.i18n?.[window.currentLang] || window.i18n?.['en'];
+
+                                renderResults(result, activeTabId);
+                                saveToHistory(config, result);
+
+                                // Stop reading if result received
+                                return;
+                            } else if (msg.type === 'error') {
+                                throw new Error(msg.message);
+                            }
+                        } catch (e) {
+                            consecutiveErrors++;
+                            console.error(`⚠️ Stream parsing error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, e);
+                            console.error('Problematic line:', line);
+
+                            // Abort if too many consecutive errors
+                            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                                console.error('❌ Too many consecutive errors, aborting stream');
+                                throw new Error(`Stream parsing failed: ${consecutiveErrors} consecutive errors`);
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Backtest cancelled by user');
+                    alert('回测已停止');
+                    progressSection.classList.remove('active');
+                    resetLiveVisualization(activeTabId);
+                    updateProgress(0, 'Cancelled', activeTabId);
+                } else {
+                    console.error('Backtest failed:', error);
+                    alert(`Backtest failed: ${error.message}`);
+                    progressSection.classList.remove('active');
+                    resetLiveVisualization(activeTabId);
+                }
+            } finally {
+                btn.disabled = false;
+                stopBtn.classList.remove('visible');  // Hide stop button with class
+                stopBtn.disabled = true;
+                if (tabState) tabState.controller = null;
+                btn.innerHTML = '▶️ Run Backtest';
+                // Re-apply language to button text
+                if (window.applyLanguage) window.applyLanguage();
+            }
+        }
+
+        function updateProgress(percent, text, tabId = currentTabId) {
+            // Update main progress bar
+            const bar = getScopedElement('progressBar', tabId);
+            if (bar) bar.style.width = percent + '%';
+            const txt = getScopedElement('progressText', tabId);
+            if (txt) txt.textContent = text;
+
+            // Update tab button status
+            const tabBtn = document.querySelector(`.backtest-tab[data-tab-id="${tabId}"] .tab-status`);
+            if (tabBtn) {
+                if (percent >= 100) {
+                    tabBtn.textContent = '✅';
+                    tabBtn.className = 'tab-status completed';
+                } else if (percent > 0) {
+                    tabBtn.textContent = percent.toFixed(1) + '%';
+                    tabBtn.className = 'tab-status running';
+                } else {
+                    tabBtn.textContent = '⏸️';
+                    tabBtn.className = 'tab-status';
+                }
+            }
+        }
+
+        function renderResults(result, tabId = currentTabId) {
+            const m = result.metrics;
+
+            // Update metrics
+            const updateMetric = (id, value, isPositive = null) => {
+                const el = getScopedElement(id, tabId);
+                if (!el) return;
+                el.textContent = value;
+                if (isPositive !== null) {
+                    el.classList.remove('positive', 'negative');
+                    el.classList.add(isPositive ? 'positive' : 'negative');
+                }
+            };
+
+            // Use backend-provided final equity and profit amount (no frontend calculation)
+            const finalEquity = parseFloat(m.final_equity) || 0;
+            const profitAmount = parseFloat(m.profit_amount) || 0;
+
+            // Update new metrics with backend values
+            updateMetric('finalEquity', `$${finalEquity.toFixed(2)}`, profitAmount >= 0);
+            updateMetric('profitAmount', `$${profitAmount >= 0 ? '+' : ''}${profitAmount.toFixed(2)}`, profitAmount >= 0);
+
+            updateMetric('totalReturn', m.total_return, parseFloat(m.total_return) >= 0);
+            updateMetric('annualizedReturn', m.annualized_return, parseFloat(m.annualized_return) >= 0);
+            updateMetric('maxDrawdown', m.max_drawdown_pct, false);
+            updateMetric('sharpeRatio', m.sharpe_ratio);
+            updateMetric('sortinoRatio', m.sortino_ratio);
+            updateMetric('volatility', m.volatility);
+            updateMetric('totalTrades', m.total_trades);
+            updateMetric('winRate', m.win_rate, parseFloat(m.win_rate) >= 50);
+            updateMetric('profitFactor', m.profit_factor);
+            updateMetric('longTrades', `${m.long_trades} (${m.long_win_rate})`);
+            updateMetric('shortTrades', `${m.short_trades} (${m.short_win_rate})`);
+            updateMetric('avgHoldTime', m.avg_holding_time);
+
+            // Update ID and Duration display
+            const idEl = getScopedElement('resultIdDisplay', tabId);
+            const durationEl = getScopedElement('resultDurationDisplay', tabId);
+            const durationTextEl = getScopedElement('durationText', tabId);
+
+            if (result.id) {
+                idEl.textContent = 'Run id' + result.id;
+                idEl.title = `DB ID: ${result.id}\nUUID: ${result.run_id || 'N/A'}`;
+                idEl.style.display = 'block';
+            } else if (result.run_id) {
+                idEl.textContent = 'Run ' + result.run_id.substring(3, 9);
+                idEl.title = `UUID: ${result.run_id}`;
+                idEl.style.display = 'block';
+            } else {
+                idEl.style.display = 'none';
+            }
+
+            // Format and display duration
+            if (result.duration_seconds !== undefined) {
+                const duration = result.duration_seconds;
+                let durationStr = '';
+
+                if (duration < 60) {
+                    durationStr = `${duration.toFixed(1)}s`;
+                } else if (duration < 3600) {
+                    const mins = Math.floor(duration / 60);
+                    const secs = Math.floor(duration % 60);
+                    durationStr = `${mins}m ${secs}s`;
+                } else {
+                    const hours = Math.floor(duration / 3600);
+                    const mins = Math.floor((duration % 3600) / 60);
+                    const secs = Math.floor(duration % 60);
+                    durationStr = `${hours}h ${mins}m ${secs}s`;
+                }
+
+                durationTextEl.textContent = durationStr;
+                durationEl.title = `Runtime: ${duration.toFixed(2)} seconds`;
+                durationEl.style.display = 'inline-block';
+            } else {
+                durationEl.style.display = 'none';
+            }
+
+            // Render charts
+            renderCharts(result.equity_curve, tabId);
+
+            // Render trades table
+            renderTradesTable(result.trades, tabId);
+        }
+
+        function renderCharts(equityCurve, tabId = currentTabId) {
+            console.log('renderCharts called with', equityCurve.length, 'points', 'tabId', tabId);
+            const labels = equityCurve.map(p => p.timestamp.split('T')[0]);
+            const equity = equityCurve.map(p => p.total_equity);
+            const drawdown = equityCurve.map(p => p.drawdown_pct);
+
+            // Destroy old charts (use backendTabs state)
+            const tabState = backtestTabs.get(tabId);
+            if (tabState) {
+                if (tabState.equityChartInstance) tabState.equityChartInstance.destroy();
+                if (tabState.drawdownChartInstance) tabState.drawdownChartInstance.destroy();
+            }
+
+            // Equity Chart
+            const eqCanvas = getScopedElement('equityChart', tabId);
+            if (eqCanvas) {
+                const eqCtx = eqCanvas.getContext('2d');
+                const chart = new Chart(eqCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Equity',
+                            data: equity,
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 0,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: {
+                                grid: { color: '#2a2a35' },
+                                ticks: { color: '#888', maxTicksLimit: 10 }
+                            },
+                            y: {
+                                grid: { color: '#2a2a35' },
+                                ticks: { color: '#888' }
+                            }
+                        }
+                    }
+                });
+                if (tabState) tabState.equityChartInstance = chart;
+            }
+
+            // Drawdown Chart
+            const ddCanvas = getScopedElement('drawdownChart', tabId);
+            if (ddCanvas) {
+                const ddCtx = ddCanvas.getContext('2d');
+                const chart = new Chart(ddCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Drawdown %',
+                            data: drawdown,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 0,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: {
+                                grid: { color: '#2a2a35' },
+                                ticks: { color: '#888', maxTicksLimit: 10 }
+                            },
+                            y: {
+                                grid: { color: '#2a2a35' },
+                                ticks: { color: '#888' },
+                                reverse: true
+                            }
+                        }
+                    }
+                });
+                if (tabState) tabState.drawdownChartInstance = chart;
+            }
+        }
+
+        function renderTradesTable(trades, tabId = currentTabId) {
+            const tbody = getScopedElement('tradesTableBody', tabId);
+
+            // Filter only close trades
+            const closeTrades = trades.filter(t => t.action === 'close');
+
+            if (closeTrades.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#888;">${t('trade.notrades')}</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = closeTrades.map(trade => {
+                const pnlClass = trade.pnl >= 0 ? 'positive' : 'negative';
+                const sideClass = trade.side === 'long' ? 'side-long' : 'side-short';
+                return `
+                    <tr>
+                        <td>${trade.timestamp.split('T')[0]} ${trade.timestamp.split('T')[1].substring(0, 5)}</td>
+                        <td class="${sideClass}">${trade.side.toUpperCase()}</td>
+                        <td>$${(trade.entry_price || 0).toFixed(2)}</td>
+                        <td>$${trade.price.toFixed(2)}</td>
+                        <td class="${pnlClass}">$${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}</td>
+                        <td class="${pnlClass}">${trade.pnl_pct >= 0 ? '+' : ''}${trade.pnl_pct.toFixed(2)}%</td>
+                        <td>${(trade.holding_time || 0).toFixed(1)}h</td>
+                        <td>${trade.close_reason || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function saveToHistory(config, result) {
+            const entry = {
+                id: result.id, // Backend database ID
+                runId: result.run_id,
+                runTime: new Date().toISOString(),
+                symbol: config.symbol,
+                symbols: config.symbols || [config.symbol],
+                startDate: config.start_date,
+                endDate: config.end_date,
+                period: `${config.start_date} ~ ${config.end_date}`,
+                initialCapital: config.initial_capital,
+                step: config.step,
+                stopLoss: config.stop_loss_pct,
+                takeProfit: config.take_profit_pct,
+                leverage: config.leverage || 10,
+                marginMode: config.margin_mode || 'cross',
+                strategyMode: config.strategy_mode || 'technical',
+                totalReturn: result.metrics.total_return,
+                winRate: result.metrics.win_rate,
+                trades: result.metrics.total_trades,
+                maxDrawdown: result.metrics.max_drawdown_pct,
+                sharpeRatio: result.metrics.sharpe_ratio,
+                profitFactor: result.metrics.profit_factor,
+                duration: result.duration_seconds,
+                // Store full data for detail view
+                equityCurve: result.equity_curve || [],
+                tradesList: result.trades || []
+            };
+
+            backtestHistory.unshift(entry);
+            // Keep only 10 items to save localStorage space
+            if (backtestHistory.length > 10) backtestHistory = backtestHistory.slice(0, 10);
+
+            localStorage.setItem('backtestHistory', JSON.stringify(backtestHistory));
+            renderHistory();
+        }
+
+        function formatRunTime(isoString) {
+            const d = new Date(isoString);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function getStepLabel(step) {
+            const labels = { 1: '5m', 3: '15m', 12: '1h', 6: '30m' };
+            return labels[step] || `${step * 5}m`;
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds || seconds <= 0) return 'N/A';
+            if (seconds < 60) return `${Math.round(seconds)}s`;
+            if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.round(seconds % 60);
+                return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+            }
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.round((seconds % 3600) / 60);
+            return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('historyList');
+
+            if (backtestHistory.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <p>No backtest history yet. Run your first backtest above!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = backtestHistory.map((h, index) => {
+                const returnClass = parseFloat(h.totalReturn) >= 0 ? 'positive' : 'negative';
+                const runTimeDisplay = h.runTime ? formatRunTime(h.runTime) : 'N/A';
+                const stepLabel = getStepLabel(h.step);
+                const capitalDisplay = h.initialCapital ? `$${h.initialCapital.toLocaleString()}` : 'N/A';
+                const hasData = h.equityCurve && h.equityCurve.length > 0;
+
+                const idDisplay = h.id ? `id${h.id}` : (h.runId ? `${h.runId.substring(3, 9)}..` : '');
+
+                const symbols = Array.isArray(h.symbols) ? h.symbols : [h.symbol];
+                const symbolsDisplay = symbols.join(', ');
+                const symbolsTitle = symbols.join(', ');
+
+                return `
+                    <div class="history-item ${hasData ? 'clickable' : ''}" 
+                         ${hasData ? `onclick="showHistoryDetail(${index})"` : ''}
+                         style="${hasData ? 'cursor:pointer;' : ''}" 
+                         title="${hasData ? t('backtest.clickview') : 'No detail data available'}\nID: ${h.id || '-'}\nUUID: ${h.runId || '-'}">
+                        <div class="history-info">
+                            <div class="history-main-row">
+                                <span class="run-time" style="font-weight:600; color:var(--accent);">
+                                    ${hasData ? '👁️' : '🕐'} ${idDisplay} ${runTimeDisplay}
+                                </span>
+                            </div>
+                            <div class="history-detail-row" style="margin-top:4px;">
+                                <span class="symbols" title="${symbolsTitle}" style="color:var(--text-secondary); font-size:0.85rem; word-break:break-word;">📊 ${symbolsDisplay}</span>
+                            </div>
+                            <div class="history-detail-row" style="margin-top:2px;">
+                                <span class="period" style="font-size:0.8rem; color:#888;">📅 ${h.period}</span>
+                                <span class="config" style="font-size:0.8rem; color:#888; margin-left:10px;">💰 ${capitalDisplay} | ⏱ ${stepLabel} | 🎮 ${h.strategyMode || 'technical'}</span>
+                            </div>
+                        </div>
+                        <div class="history-stats">
+                            <div class="history-stat">
+                                <span class="label">${t('metric.return')}</span>
+                                <span class="value ${returnClass}">${h.totalReturn}</span>
+                            </div>
+                            <div class="history-stat">
+                                <span class="label">${t('metric.winrate.short')}</span>
+                                <span class="value">${h.winRate}</span>
+                            </div>
+                            <div class="history-stat">
+                                <span class="label">${t('metric.trades.short')}</span>
+                                <span class="value">${h.trades}</span>
+                            </div>
+                            <div class="history-stat">
+                                <span class="label">${t('metric.maxdd.short')}</span>
+                                <span class="value negative">${h.maxDrawdown || 'N/A'}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Show details from history item
+        function showHistoryDetail(index) {
+            console.log('Showing history detail for index:', index);
+            const h = backtestHistory[index];
+            console.log('History item:', h);
+
+            if (!h || !h.equityCurve || h.equityCurve.length === 0) {
+                alert('No detailed data available for this backtest');
+                return;
+            }
+
+            // Show results section
+            document.getElementById('resultsSection').style.display = 'block';
+
+            // Scroll to results
+            document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+
+            // Safe element update helper
+            const setElementText = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+
+            // Update metrics display with safe setter
+            setElementText('totalReturn', h.totalReturn || '-');
+            setElementText('annualizedReturn', '-'); // Optional metric, may not exist in DOM
+            setElementText('maxDrawdown', h.maxDrawdown ? `${h.maxDrawdown}%` : '-');
+            setElementText('sharpeRatio', h.sharpeRatio || '-');
+            setElementText('winRate', h.winRate ? `${h.winRate}%` : '-');
+            setElementText('totalTrades', h.trades || '-');
+            setElementText('profitFactor', h.profitFactor || '-');
+
+            // Update ID display
+            const idEl = document.getElementById('resultIdDisplay');
+            if (h.id) {
+                idEl.textContent = 'Run id' + h.id;
+                idEl.title = `DB ID: ${h.id}\nUUID: ${h.runId || 'N/A'}`;
+                idEl.style.display = 'block';
+            } else if (h.runId) {
+                idEl.textContent = 'Run ' + h.runId.substring(3, 9);
+                idEl.title = `UUID: ${h.runId}`;
+                idEl.style.display = 'block';
+            } else {
+                idEl.style.display = 'none';
+            }
+
+            // Force destroy old charts before rendering new ones
+            if (equityChartInstance) {
+                equityChartInstance.destroy();
+                equityChartInstance = null;
+            }
+            if (drawdownChartInstance) {
+                drawdownChartInstance.destroy();
+                drawdownChartInstance = null;
+            }
+
+            // Small delay to ensure charts are destroyed
+            setTimeout(() => {
+                console.log('Rendering charts with', h.equityCurve.length, 'data points');
+                renderCharts(h.equityCurve);
+            }, 100);
+
+            // Render trades table with stored data
+            if (h.tradesList && h.tradesList.length > 0) {
+                console.log('Rendering', h.tradesList.length, 'trades');
+                renderTradesTable(h.tradesList);
+            } else {
+                document.getElementById('tradesTableBody').innerHTML =
+                    `<tr><td colspan="8" style="text-align:center;color:#888;">${t('trade.notrades')}</td></tr>`;
+            }
+        }
+    </script>
+</body>
+
+</html>

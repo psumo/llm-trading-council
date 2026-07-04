@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  llm-tradebot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: llm-tradebot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Load from .env file
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY}
+      - BINANCE_TESTNET=${BINANCE_TESTNET:-true}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - TRADING_SYMBOLS=${TRADING_SYMBOLS:-AI500_TOP5}
+      - DEPLOYMENT_MODE=docker
+    volumes:
+      # Persist data
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - ../models:/app/models
+      # Mount .env for runtime config changes
+      - ../.env:/app/.env:ro
+    networks:
+      - tradebot-network
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import requests; requests.get('http://localhost:8000')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  tradebot-network:
+    driver: bridge

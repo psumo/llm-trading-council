@@ -1,0 +1,558 @@
+"""Pure I/O service for trading data persistence.
+
+This service handles all file system operations for trading data without any
+business logic. Follows Single Responsibility Principle by delegating
+calculations to other services.
+
+Trade history is now stored in SQLite (not JSON) for O(1) appends and indexed
+queries.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+from src.logger.logger import Logger
+from src.utils.data_utils import serialize_for_json
+from src.trading.data_models import Position, TradeDecision
+from src.trading.statistics_calculator import TradingStatistics
+from src.managers.sqlite_trade_history import SQLiteTradeHistory
+
+
+class PersistenceManager:
+    """Pure persistence layer for trading data.
+
+    Responsibilities:
+    - Load/save positions, trade history, brain, statistics
+    - No business logic (no P&L calculation, no insight extraction)
+    """
+
+    ENTRY_DECISION_MATCH_TOLERANCE_SECONDS = 0.5
+
+    @staticmethod
+    def _ensure_utc(dt: datetime) -> datetime:
+        """Ensure datetime is timezone-aware (UTC)."""
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    def __init__(self, logger: Logger, data_dir: str = "trading_data"):
+        """Initialize trading persistence.
+
+        Args:
+            logger: Logger instance
+            data_dir: Directory for trading data files
+        """
+        self.logger = logger
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
+        self.positions_file = self.data_dir / "positions.json"
+        self.previous_response_file = self.data_dir / "previous_response.json"
+        self.last_analysis_file = self.data_dir / "last_analysis.json"
+        self.statistics_file = self.data_dir / "statistics.json"
+        self.position_monitor_file = self.data_dir / "position_monitor.json"
+
+        # In-memory caches to prevent blocking I/O on hot paths.
+        # Cache contract: every cache entry is write-through — set on load AND on
+        # every save.  ``save_position(None)`` sets _position_cache = None and
+        # _position_cache_valid = True.  There is no external invalidation path.
+        # If the position file is modified by another process, the cache will be
+        # stale until the next save or a process restart.
+        self._position_cache: "Position" | None = None
+        self._position_cache_valid: bool = False
+        self._last_analysis_time_cache: datetime | None = None
+        self._last_analysis_time_cache_valid: bool = False
+
+        # SQLite trade history store.
+        sqlite_db_path = self.data_dir / "trade_history.db"
+        self._sqlite = SQLiteTradeHistory(
+            logger=self.logger,
+            db_path=str(sqlite_db_path),
+        )
+
+    @property
+    def sqlite_history(self) -> SQLiteTradeHistory:
+        """Expose the SQLite trade history store for dashboard/query access."""
+        return self._sqlite
+
+    def save_position(self, position: "Position" | None) -> None:
+        """Save current position to disk."""
+        try:
+            if position is None:
+                if self.positions_file.exists():
+                    self.positions_file.unlink()
+                self._position_cache = None
+                self._position_cache_valid = True
+                return
+
+            data = {
+                "entry_price": position.entry_price,
+                "stop_loss": position.stop_loss,
+                "take_profit": position.take_profit,
+                "size": position.size,
+                "entry_time": position.entry_time.isoformat(),
+                "confidence": position.confidence,
+                "direction": position.direction,
+                "symbol": position.symbol,
+                "confluence_factors": [[name, score] for name, score in position.confluence_factors],
+                "entry_fee": position.entry_fee,
+                "size_pct": position.size_pct,
+                "quote_amount": position.quote_amount,
+                "atr_at_entry": position.atr_at_entry,
+                "volatility_level": position.volatility_level,
+                "sl_distance_pct": position.sl_distance_pct,
+                "tp_distance_pct": position.tp_distance_pct,
+                "rr_ratio_at_entry": position.rr_ratio_at_entry,
+                "adx_at_entry": position.adx_at_entry,
+                "rsi_at_entry": position.rsi_at_entry,
+                "trend_direction_at_entry": position.trend_direction_at_entry,
+                "macd_signal_at_entry": position.macd_signal_at_entry,
+                "bb_position_at_entry": position.bb_position_at_entry,
+                "volume_state_at_entry": position.volume_state_at_entry,
+                "market_sentiment_at_entry": position.market_sentiment_at_entry,
+                "order_book_bias_at_entry": position.order_book_bias_at_entry,
+                "stop_loss_type_at_entry": position.stop_loss_type_at_entry,
+                "stop_loss_check_interval_at_entry": position.stop_loss_check_interval_at_entry,
+                "take_profit_type_at_entry": position.take_profit_type_at_entry,
+                "take_profit_check_interval_at_entry": position.take_profit_check_interval_at_entry,
+                "max_drawdown_pct": position.max_drawdown_pct,
+                "max_profit_pct": position.max_profit_pct,
+            }
+
+            data = serialize_for_json(data)
+
+            temp_path = str(self.positions_file) + ".tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            os.replace(temp_path, self.positions_file)
+
+            self._position_cache = position
+            self._position_cache_valid = True
+
+            self.logger.debug("Saved position: %s %s", position.direction, position.symbol)
+        except Exception as e:
+            self.logger.error("Error saving position: %s", e)
+
+    async def async_save_position(self, position: "Position" | None) -> None:
+        """Non-blocking save_position: runs on a thread-pool worker."""
+        await asyncio.to_thread(self.save_position, position)
+
+    def load_position(self) -> "Position" | None:
+        """Load current position from disk."""
+        if self._position_cache_valid:
+            return self._position_cache
+
+        if not self.positions_file.exists():
+            self._position_cache = None
+            self._position_cache_valid = True
+            return None
+
+        try:
+            with open(self.positions_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                cf_list = data.get("confluence_factors", [])
+                cf_tuple = tuple((name, score) for name, score in cf_list)
+                position = Position(
+                    entry_price=data["entry_price"],
+                    stop_loss=data["stop_loss"],
+                    take_profit=data["take_profit"],
+                    size=data["size"],
+                    entry_time=self._ensure_utc(datetime.fromisoformat(data["entry_time"])),
+                    confidence=data.get("confidence", "MEDIUM"),
+                    direction=data.get("direction", "LONG"),
+                    symbol=data.get("symbol", "BTC/USDC"),
+                    confluence_factors=cf_tuple,
+                    entry_fee=data.get("entry_fee", 0.0),
+                    quote_amount=data.get("quote_amount", 0.0),
+                    size_pct=data.get("size_pct", 0.0),
+                    atr_at_entry=data.get("atr_at_entry", 0.0),
+                    volatility_level=data.get("volatility_level", "MEDIUM"),
+                    sl_distance_pct=data.get("sl_distance_pct", 0.0),
+                    tp_distance_pct=data.get("tp_distance_pct", 0.0),
+                    rr_ratio_at_entry=data.get("rr_ratio_at_entry", 0.0),
+                    adx_at_entry=data.get("adx_at_entry", 0.0),
+                    rsi_at_entry=data.get("rsi_at_entry", 50.0),
+                    trend_direction_at_entry=data.get("trend_direction_at_entry", "NEUTRAL"),
+                    macd_signal_at_entry=data.get("macd_signal_at_entry", "NEUTRAL"),
+                    bb_position_at_entry=data.get("bb_position_at_entry", "MIDDLE"),
+                    volume_state_at_entry=data.get("volume_state_at_entry", "NORMAL"),
+                    market_sentiment_at_entry=data.get("market_sentiment_at_entry", "NEUTRAL"),
+                    order_book_bias_at_entry=data.get("order_book_bias_at_entry", "BALANCED"),
+                    stop_loss_type_at_entry=data.get("stop_loss_type_at_entry", "unknown"),
+                    stop_loss_check_interval_at_entry=data.get("stop_loss_check_interval_at_entry", "unknown"),
+                    take_profit_type_at_entry=data.get("take_profit_type_at_entry", "unknown"),
+                    take_profit_check_interval_at_entry=data.get("take_profit_check_interval_at_entry", "unknown"),
+                    max_drawdown_pct=data.get("max_drawdown_pct", 0.0),
+                    max_profit_pct=data.get("max_profit_pct", 0.0),
+                )
+
+                # Update cache
+                self._position_cache = position
+                self._position_cache_valid = True
+
+                return position
+        except Exception as e:
+            self.logger.error("Error loading position: %s", e)
+            return None
+
+    def validate_loaded_position(self, expected_symbol: str | None = None) -> list[str]:
+        """Check the loaded position for config mismatches and return warnings.
+
+        Call after load_position() to detect stale or misconfigured state.
+        Does NOT modify the position file — only reports issues.
+
+        Args:
+            expected_symbol: The trading pair from the current config. If
+                             provided and the loaded position's symbol doesn't
+                             match, a conflict warning is generated.
+
+        Returns:
+            List of human-readable warning strings (empty if no issues found).
+        """
+        warnings: list[str] = []
+        position = self._position_cache if self._position_cache_valid else None
+        if position is None:
+            return warnings
+
+        if not self.positions_file.exists():
+            return warnings
+
+        try:
+            raw = json.loads(self.positions_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            warnings.append(
+                f"positions.json exists but could not be parsed: {e}. "
+                "The file may be corrupt — consider removing it."
+            )
+            return warnings
+
+        if expected_symbol and position.symbol != expected_symbol:
+            warnings.append(
+                f"CONFIG MISMATCH: Existing position is for {position.symbol}, "
+                f"but the current config targets {expected_symbol}. "
+                "The loaded position will be used, but SL/TP levels may be "
+                "invalid for the current trading pair. Review before trading."
+            )
+
+        unknown_keys = [k for k in raw if k not in {
+            "entry_price", "stop_loss", "take_profit", "size", "entry_time",
+            "confidence", "direction", "symbol", "confluence_factors",
+            "entry_fee", "quote_amount", "size_pct", "atr_at_entry",
+            "volatility_level", "sl_distance_pct", "tp_distance_pct",
+            "rr_ratio_at_entry", "adx_at_entry", "rsi_at_entry",
+            "trend_direction_at_entry", "macd_signal_at_entry",
+            "bb_position_at_entry", "volume_state_at_entry",
+            "market_sentiment_at_entry", "order_book_bias_at_entry",
+            "stop_loss_type_at_entry", "stop_loss_check_interval_at_entry",
+            "take_profit_type_at_entry", "take_profit_check_interval_at_entry",
+            "max_drawdown_pct", "max_profit_pct",
+        }]
+        if unknown_keys:
+            warnings.append(
+                f"positions.json contains unrecognized fields: {', '.join(sorted(unknown_keys))}. "
+                "This may indicate a version mismatch or corrupted state."
+            )
+
+        return warnings
+
+    def save_trade_decision(self, decision: "TradeDecision") -> None:
+        """Save a trade decision to SQLite history."""
+        decision_dict = decision.to_dict()
+        sanitized = serialize_for_json(decision_dict)
+
+        try:
+            row_id = self._sqlite.insert(sanitized)
+            if row_id:
+                self.logger.debug("Saved trade decision to SQLite (row %d): %s @ $%s",
+                                  row_id, decision.action, f"{decision.price:,.2f}")
+                return
+        except Exception as e:
+            self.logger.error("SQLite save failed: %s", e)
+        raise RuntimeError("Failed to save trade decision to SQLite")
+
+    async def async_save_trade_decision(self, decision: "TradeDecision") -> None:
+        """Non-blocking save_trade_decision: runs on a thread-pool worker."""
+        await asyncio.to_thread(self.save_trade_decision, decision)
+
+    def load_trade_history(self) -> list[dict[str, Any]]:
+        """Load full trade history from SQLite."""
+        return self._sqlite.export_json()
+
+    def get_last_execution_timestamp(self, actions: tuple[str, ...] = ("BUY", "SELL")) -> datetime | None:
+        """Return the newest execution timestamp from trade history.
+
+        Args:
+            actions: Action labels used to identify execution entries.
+
+        Returns:
+            UTC-aware datetime if found, else None.
+        """
+        try:
+            ts = self._sqlite.get_last_execution_timestamp(actions=actions)
+            if not ts:
+                return None
+            return self._ensure_utc(datetime.fromisoformat(ts))
+        except Exception as e:
+            self.logger.error("Failed to read last execution timestamp from SQLite: %s", e)
+            raise
+
+    def get_entry_decision_for_position(
+        self,
+        entry_time: datetime,
+        symbol: str | None = None,
+    ) -> "TradeDecision" | None:
+        """Retrieve the entry decision from trade history for a given position.
+
+        Uses SQLite's indexed timestamp query for O(log n) lookup instead of
+        scanning all JSON records.
+
+        Args:
+            entry_time: The entry_time of the position to find.
+            symbol: Optional symbol used to disambiguate rapid entries.
+
+        Returns:
+            TradeDecision with the original entry reasoning, or None if not found
+        """
+        try:
+            entry_time_utc = self._ensure_utc(entry_time)
+            since = (entry_time_utc - timedelta(seconds=self.ENTRY_DECISION_MATCH_TOLERANCE_SECONDS)).isoformat()
+            until = (entry_time_utc + timedelta(seconds=self.ENTRY_DECISION_MATCH_TOLERANCE_SECONDS)).isoformat()
+
+            candidates = self._sqlite.query(
+                symbol=symbol,
+                limit=10,
+                since=since,
+                until=until,
+            )
+            entry_actions = {"BUY", "SELL"}
+            best_match: tuple[float, dict[str, Any], datetime] | None = None
+
+            for decision_dict in candidates:
+                action = decision_dict.get("action", "")
+                timestamp_str = decision_dict.get("timestamp", "")
+
+                if action not in entry_actions or not timestamp_str:
+                    continue
+
+                try:
+                    decision_time = self._ensure_utc(datetime.fromisoformat(timestamp_str))
+                except (TypeError, ValueError):
+                    continue
+
+                time_diff = abs((decision_time - entry_time_utc).total_seconds())
+                if time_diff > self.ENTRY_DECISION_MATCH_TOLERANCE_SECONDS:
+                    continue
+                if best_match is None or time_diff < best_match[0]:
+                    best_match = (time_diff, decision_dict, decision_time)
+
+            if best_match:
+                _, decision_dict, decision_time = best_match
+                action = decision_dict.get("action", "")
+                return TradeDecision(
+                    timestamp=decision_time,
+                    symbol=decision_dict.get("symbol", "BTC/USDC"),
+                    action=action,
+                    confidence=decision_dict.get("confidence", "MEDIUM"),
+                    price=decision_dict.get("price", 0.0),
+                    stop_loss=decision_dict.get("stop_loss"),
+                    take_profit=decision_dict.get("take_profit"),
+                    position_size=decision_dict.get("position_size", 0.0),
+                    quote_amount=decision_dict.get("quote_amount", 0.0),
+                    quantity=decision_dict.get("quantity", 0.0),
+                    fee=decision_dict.get("fee", 0.0),
+                    reasoning=decision_dict.get("reasoning", "")
+                )
+
+            self.logger.warning("Could not find entry decision for position at %s", entry_time)
+            return None
+
+        except Exception as e:
+            self.logger.error("Error retrieving entry decision from SQLite: %s", e)
+            return None
+
+    def save_statistics(self, stats: "TradingStatistics") -> None:
+        """Save trading statistics to disk."""
+        try:
+            data = serialize_for_json(stats.to_dict())
+            temp_path = str(self.statistics_file) + ".tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            os.replace(temp_path, self.statistics_file)
+            self.logger.debug("Saved statistics: %s trades", stats.total_trades)
+        except Exception as e:
+            self.logger.error("Error saving statistics: %s", e)
+
+    def load_statistics(self) -> "TradingStatistics":
+        """Load trading statistics from disk."""
+        if not self.statistics_file.exists():
+            return TradingStatistics()
+        try:
+            with open(self.statistics_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return TradingStatistics.from_dict(data)
+        except Exception as e:
+            self.logger.error("Error loading statistics: %s", e)
+            return TradingStatistics()
+
+    def save_position_monitor_state(self, state: dict[str, Any]) -> None:
+        """Save position monitor cadence state to disk."""
+        try:
+            data = serialize_for_json(state)
+            temp_path = str(self.position_monitor_file) + ".tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            os.replace(temp_path, self.position_monitor_file)
+        except Exception as e:
+            self.logger.error("Error saving position monitor state: %s", e)
+
+    async def async_save_position_monitor_state(self, state: dict[str, Any]) -> None:
+        """Non-blocking save_position_monitor_state: runs on a thread-pool worker."""
+        await asyncio.to_thread(self.save_position_monitor_state, state)
+
+    def load_position_monitor_state(self) -> dict[str, Any]:
+        """Load position monitor cadence state from disk."""
+        if not self.position_monitor_file.exists():
+            return {}
+        try:
+            with open(self.position_monitor_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.error("Error loading position monitor state: %s", e)
+            return {}
+
+    async def async_load_position_monitor_state(self) -> dict[str, Any]:
+        """Non-blocking load_position_monitor_state: runs on a thread-pool worker."""
+        return await asyncio.to_thread(self.load_position_monitor_state)
+
+    def clear_position_monitor_state(self) -> None:
+        """Remove persisted position monitor cadence state."""
+        try:
+            if self.position_monitor_file.exists():
+                self.position_monitor_file.unlink()
+        except Exception as e:
+            self.logger.error("Error clearing position monitor state: %s", e)
+
+    async def async_clear_position_monitor_state(self) -> None:
+        """Non-blocking clear_position_monitor_state: runs on a thread-pool worker."""
+        await asyncio.to_thread(self.clear_position_monitor_state)
+
+    def save_previous_response(
+        self,
+        response: str,
+        technical_data: dict[str, Any] | None = None,
+        prompt: str | None = None
+    ) -> None:
+        """Save the previous AI response, technical indicator values, and prompt.
+
+        Args:
+            response: The AI response text
+            technical_data: Dictionary of technical indicator values (RSI, MACD, ADX, etc.)
+            prompt: The prompt that was sent to the AI
+        """
+        try:
+            response_dict = {"text_analysis": response}
+
+            if technical_data:
+                serialized_data = serialize_for_json(technical_data)
+                response_dict.update(serialized_data)
+
+            data_to_save = {
+                "response": response_dict,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+            # Add prompt if provided
+            if prompt:
+                data_to_save["prompt"] = prompt
+
+            data_to_save = serialize_for_json(data_to_save)
+
+            temp_path = str(self.previous_response_file) + ".tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data_to_save, f, indent=2)
+            os.replace(temp_path, self.previous_response_file)
+
+            self.logger.debug("Saved previous response with %s indicators", len(technical_data) if technical_data else 0)
+        except Exception as e:
+            self.logger.error("Error saving previous response: %s", e)
+
+    async def async_load_previous_response(self) -> dict[str, Any] | None:
+        """Non-blocking load_previous_response: runs on a thread-pool worker."""
+        return await asyncio.to_thread(self.load_previous_response)
+
+    def load_previous_response(self) -> dict[str, Any] | None:
+        """Load the previous AI response and technical indicators.
+
+        Returns:
+            Dictionary with 'response' (str) and 'technical_indicators' (dict) keys,
+            or None if file doesn't exist
+        """
+        if not self.previous_response_file.exists():
+            return None
+
+        try:
+            with open(self.previous_response_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+                response_data = data.get("response", {})
+                text_analysis = response_data.get("text_analysis", "")
+                technical_indicators = {k: v for k, v in response_data.items() if k != "text_analysis"}
+
+                return {
+                    "response": text_analysis,
+                    "technical_indicators": technical_indicators if technical_indicators else None,
+                    "timestamp": data.get("timestamp")
+                }
+        except Exception as e:
+            self.logger.error("Error loading previous response: %s", e)
+            return None
+
+    def save_last_analysis_time(self, timestamp: datetime | None = None) -> None:
+        """Save the timestamp of the last successful analysis.
+
+        Args:
+            timestamp: Timestamp to save (defaults to now)
+        """
+        try:
+            if timestamp is None:
+                timestamp = datetime.now(timezone.utc)
+
+            self._last_analysis_time_cache = timestamp
+            self._last_analysis_time_cache_valid = True
+
+            temp_path = str(self.last_analysis_file) + ".tmp"
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump({
+                    "timestamp": timestamp.isoformat()
+                }, f, indent=2)
+            os.replace(temp_path, self.last_analysis_file)
+
+        except Exception as e:
+            self.logger.error("Error saving last analysis time: %s", e)
+
+    def get_last_analysis_time(self) -> datetime | None:
+        """Get timestamp of last successful analysis."""
+        if self._last_analysis_time_cache_valid:
+            return self._last_analysis_time_cache
+
+        if not self.last_analysis_file.exists():
+            self._last_analysis_time_cache = None
+            self._last_analysis_time_cache_valid = True
+            return None
+
+        try:
+            with open(self.last_analysis_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                dt = self._ensure_utc(datetime.fromisoformat(data["timestamp"]))
+                self._last_analysis_time_cache = dt
+                self._last_analysis_time_cache_valid = True
+                return dt
+        except Exception as e:
+            self.logger.warning("Could not get last analysis time: %s", e)
+            return None

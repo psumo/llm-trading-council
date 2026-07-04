@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+*.db
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+
+*.swp
+*.swo
+.devcontainer/
+.claude/
+# Testing
+.pytest_cache/
+.coverage
+*.future
+htmlcov/
+
+# Project specific
+*.log
+/data/*
+!/data/categories.json
+/cache/
+/logs/
+config/config.ini
+# Updated configuration file management
+# Private keys and sensitive data
+keys.env
+*.env
+node_modules/
+website/.astro/
+website/dist/
+
+# AI-generated artifacts (plans, drafts, research — never committed)
+.ai/

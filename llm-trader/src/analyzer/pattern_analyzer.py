@@ -1,0 +1,120 @@
+from typing import Any
+import numpy as np
+
+from src.analyzer.pattern_engine.indicator_patterns import IndicatorPatternEngine
+from src.logger.logger import Logger
+from src.utils.profiler import profile_performance
+from src.utils.format_utils import timestamps_from_ms_array
+
+
+class PatternAnalyzer:
+
+    def __init__(
+        self,
+        indicator_pattern_engine: IndicatorPatternEngine,
+        logger: Logger | None = None
+    ):
+        self.logger = logger
+        self.indicator_pattern_engine = indicator_pattern_engine
+        self._warmed_up = False
+
+    @profile_performance
+    def detect_patterns(
+        self,
+        ohlcv_data: np.ndarray,
+        technical_history: dict[str, np.ndarray],
+        long_term_data: dict | None = None,
+        timestamps: list | None = None
+    ) -> dict[str, Any]:
+        """
+        Detect all chart and indicator patterns from current market data.
+
+        Note: No caching - always runs fresh detection for real-time analysis.
+        """
+        # Use provided timestamps or extract from OHLCV data as fallback
+        if timestamps is None and ohlcv_data is not None and len(ohlcv_data) > 0:
+            try:
+                timestamps = timestamps_from_ms_array(ohlcv_data[:, 0])
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning("Could not extract timestamps from OHLCV data: %s", e)
+
+        # Extract SMA values for MA crossover detection
+        sma_values = None
+        if long_term_data is not None and 'sma_values' in long_term_data:
+            sma_values = long_term_data['sma_values']
+
+        # Detect indicator patterns
+        patterns = {}
+        try:
+            patterns = self.indicator_pattern_engine.detect_patterns(
+                technical_history, ohlcv_data, sma_values, timestamps
+            )
+        except Exception as e:
+            if self.logger:
+                self.logger.warning("Error detecting indicator patterns: %s", e)
+
+        return patterns
+
+    def warmup(self) -> None:
+        """Run a lightweight detection pass to prime numba caches."""
+        if self._warmed_up:
+            return
+
+        sample_count = 64
+        try:
+            dummy_ohlcv = self._build_dummy_ohlcv(sample_count)
+            dummy_history = self._build_dummy_history(sample_count, dummy_ohlcv[:, 4])
+            self.indicator_pattern_engine.detect_patterns(dummy_history, dummy_ohlcv, None, None)
+            self._warmed_up = True
+            if self.logger:
+                self.logger.debug("PatternAnalyzer warm-up completed (Numba cache primed)")
+        except Exception as exc:
+            if self.logger:
+                self.logger.warning("PatternAnalyzer warm-up skipped: %s", exc)
+
+    def _build_dummy_ohlcv(self, sample_count: int) -> np.ndarray:
+        """Create deterministic OHLCV data for warm-up."""
+        timestamps = np.arange(sample_count) * 60_000
+        base = np.linspace(100.0, 110.0, sample_count)
+        noise = np.sin(np.linspace(0, np.pi * 3, sample_count)) * 0.5
+        close = base + noise
+        open_prices = close - 0.1
+        high = close + 0.5
+        low = close - 0.5
+        volume = np.linspace(1_000.0, 1_500.0, sample_count)
+        return np.column_stack((timestamps, open_prices, high, low, close, volume))
+
+    def _build_dummy_history(self, sample_count: int, close_series: np.ndarray) -> dict[str, np.ndarray]:
+        """Construct the minimal indicator history needed for pattern warm-up."""
+        ramp = np.linspace(-1.0, 1.0, sample_count)
+        rsi = np.clip(50 + 20 * np.sin(ramp * np.pi), 0, 100)
+        macd_line = ramp
+        macd_signal = ramp * 0.8
+        macd_hist = macd_line - macd_signal
+        stoch_k = np.clip(50 + 30 * np.sin(ramp * np.pi), 0, 100)
+        stoch_d = np.clip(50 + 20 * np.cos(ramp * np.pi), 0, 100)
+        atr = np.linspace(0.5, 1.5, sample_count)
+        bb_upper = close_series + 1.0
+        bb_lower = close_series - 1.0
+        kc_upper = close_series + 0.8
+        kc_lower = close_series - 0.8
+
+        return {
+            'rsi': rsi.astype(np.float64),
+            'macd_line': macd_line.astype(np.float64),
+            'macd_signal': macd_signal.astype(np.float64),
+            'macd_hist': macd_hist.astype(np.float64),
+            'stoch_k': stoch_k.astype(np.float64),
+            'stoch_d': stoch_d.astype(np.float64),
+            'atr': atr.astype(np.float64),
+            'bb_upper': bb_upper.astype(np.float64),
+            'bb_lower': bb_lower.astype(np.float64),
+            'kc_upper': kc_upper.astype(np.float64),
+            'kc_lower': kc_lower.astype(np.float64),
+            'sma_20': close_series.astype(np.float64),
+            'sma_50': close_series.astype(np.float64),
+            'sma_200': close_series.astype(np.float64)
+        }
+
+

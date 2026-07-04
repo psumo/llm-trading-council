@@ -1,0 +1,749 @@
+"""Market Analysis Engine.
+
+This module orchestrates the gathering of market data, technical analysis,
+and AI generation to produce trading signals.
+"""
+from typing import Any, TYPE_CHECKING
+import io
+import asyncio
+from datetime import datetime
+
+import numpy as np
+
+from src.utils.timeframe_validator import TimeframeValidator
+from src.utils.profiler import profile_performance
+from src.utils.indicator_classifier import (
+    classify_trend_direction,
+    classify_volatility_level,
+    classify_rsi_level,
+    classify_macd_signal,
+    classify_volume_state,
+    classify_bb_position,
+    classify_market_sentiment,
+    classify_order_book_bias,
+    build_exit_execution_context_from_config,
+)
+from src.logger.logger import Logger
+from src.analyzer.data_fetcher import DataFetcher
+from .analysis_context import AnalysisContext
+
+if TYPE_CHECKING:
+    from src.config.loader import Config
+    from src.managers.model_manager import ModelManager
+    from src.rag import RagEngine
+
+
+class AnalysisEngine:
+    """Orchestrates market data collection, analysis, and publication"""
+
+    def __init__(
+        self,
+        logger: Logger,
+        rag_engine: "RagEngine",
+        model_manager: "ModelManager",
+        market_api,
+        config: "Config",
+        technical_calculator=None,
+        pattern_analyzer=None,
+        prompt_builder=None,
+        data_collector=None,
+        metrics_calculator=None,
+        result_processor=None,
+        chart_generator=None
+    ) -> None:
+        """
+        Initialize AnalysisEngine with injected dependencies (DI pattern).
+
+        Args:
+            logger: Logger instance
+            rag_engine: RAG engine for news and context
+            model_manager: AI model manager (Protocol-based)
+            market_api: Market metadata API client
+            format_utils: Formatting utilities
+            data_processor: Data processing utilities
+            config: Configuration instance
+            technical_calculator: TechnicalCalculator instance (injected from app.py)
+            pattern_analyzer: PatternAnalyzer instance (injected from app.py)
+            prompt_builder: PromptBuilder instance (injected from app.py)
+            data_collector: MarketDataCollector instance (injected from app.py)
+            metrics_calculator: MarketMetricsCalculator instance (injected from app.py)
+            result_processor: AnalysisResultProcessor instance (injected from app.py)
+            chart_generator: ChartGenerator instance (injected from app.py)
+        """
+        # pylint: disable=too-many-arguments, too-many-locals
+        self.logger = logger
+
+        self.config = config
+        self.exchange = None
+        self.symbol = None
+        self.base_symbol = None
+        self.context = None
+        self.article_urls = {}
+        self.previous_microstructure_snapshots: dict[str, dict[str, Any]] = {}
+
+        try:
+            self.timeframe = TimeframeValidator.validate_and_normalize(self.config.TIMEFRAME)
+            self.limit = self.config.CANDLE_LIMIT
+        except ValueError as e:
+            self.logger.error("Invalid configured timeframe: %s", e)
+            raise
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.logger.exception("Error loading configuration values: %s.", e)
+            raise
+        self.model_manager = model_manager
+        self.technical_calculator = technical_calculator
+        self.pattern_analyzer = pattern_analyzer
+        self.prompt_builder = prompt_builder
+        self.data_collector = data_collector
+        self.metrics_calculator = metrics_calculator
+        self.result_processor = result_processor
+        self.chart_generator = chart_generator
+
+        self.rag_engine = rag_engine
+        self.market_api = market_api
+
+        self.token_counter = self.model_manager.token_counter
+
+        self.last_generated_prompt: str | None = None
+        self.last_prompt_timestamp: str | None = None
+        self.last_system_prompt: str | None = None
+        self.last_prompt_metadata: dict[str, Any] | None = None
+        self.last_prompt_lint: dict[str, Any] | None = None
+        self.last_llm_response: str | None = None
+        self.last_response_timestamp: str | None = None
+        self.last_response_validation: dict[str, Any] | None = None
+        self.last_chart_buffer: io.BytesIO | None = None
+
+    def initialize_for_symbol(self, symbol: str, exchange, timeframe=None) -> None:
+        """
+        Initialize the analyzer for a specific symbol and exchange.
+
+        Args:
+            symbol: Trading pair symbol (e.g., "BTC/USDT")
+            exchange: Exchange instance
+            timeframe: Optional timeframe override (uses config default if None)
+        """
+        self.symbol = symbol
+        self.exchange = exchange
+        self.base_symbol = symbol.split('/')[0] if '/' in symbol else symbol
+
+        effective_timeframe = timeframe if timeframe else self.timeframe
+
+        try:
+            effective_timeframe = TimeframeValidator.validate_and_normalize(effective_timeframe)
+        except ValueError as e:
+            self.logger.warning("Timeframe validation failed: %s. Falling back to config default: %s", e, self.timeframe)
+            effective_timeframe = self.timeframe
+
+        self.context = AnalysisContext(symbol)
+        self.context.exchange = exchange.name if exchange.name else str(exchange)
+        self.context.timeframe = effective_timeframe
+
+        data_fetcher = DataFetcher(exchange, self.logger)
+
+        self.data_collector.initialize(
+            data_fetcher=data_fetcher,
+            symbol=symbol,
+            exchange=exchange,
+            timeframe=effective_timeframe,
+            limit=self.limit
+        )
+
+        self.prompt_builder.timeframe = effective_timeframe
+
+        self.article_urls = {}
+
+        self.token_counter.reset_session_stats()
+
+    async def close(self) -> None:
+        """Clean up resources with proper null checks"""
+        try:
+            if self.exchange is not None:
+                await self.exchange.close()
+
+            if self.model_manager is not None:
+                await self.model_manager.close()
+
+            if self.rag_engine is not None:
+                await self.rag_engine.close()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error during MarketAnalyzer cleanup: %s", e)
+
+    @profile_performance
+    async def analyze_market(
+        self,
+        provider: str | None = None,
+        model: str | None = None,
+        additional_context: str | None = None,
+        previous_response: str | None = None,
+        previous_indicators: dict[str, Any] | None = None,
+        position_context: str | None = None,
+        performance_context: str | None = None,
+        brain_service = None,
+        last_analysis_time: str | None = None,
+        current_ticker: dict[str, Any] | None = None,
+        dynamic_thresholds: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """
+        Orchestrate the complete market analysis workflow.
+
+        Args:
+            provider: Optional AI provider override (admin only)
+            model: Optional AI model override (admin only)
+            additional_context: Additional context to append to prompt (e.g., extra instructions)
+            previous_response: Optional previous AI response for continuity
+            previous_indicators: Optional previous technical indicator values for trend comparison
+            position_context: Current position details and unrealized P&L (goes to system prompt)
+            performance_context: Recent trading history and performance (goes to system prompt)
+            brain_service: TradingBrainService instance to generate context from CURRENT indicators
+            last_analysis_time: Formatted timestamp of last analysis (e.g., "2025-12-26 14:30:00")
+            current_ticker: Optional dict containing current ticker data to avoid redundant API calls
+            dynamic_thresholds: Optional dict containing brain-learned thresholds for response template
+
+        Returns:
+            Dictionary containing analysis results
+        """
+        try:
+            # Step 1: Collect all required data
+            if not await self._collect_market_data():
+                return {"error": "Failed to collect market data", "details": "Data collection failed"}
+
+            async def run_tech_and_chart():
+                await self._perform_technical_analysis()
+                has_chart_analysis = self.model_manager.supports_image_analysis(provider)
+                if has_chart_analysis:
+                    return await self._generate_chart_image(), has_chart_analysis
+                return None, False
+
+            async def run_rag_analysis():
+                query = self.rag_engine.build_context_query(self.symbol)
+                
+                market_context = await self.rag_engine.retrieve_context(
+                    query,
+                    self.symbol,
+                    k=self.rag_engine.config.RAG_NEWS_LIMIT
+                )
+
+                rag_urls = {}
+                try:
+                    rag_urls = self.rag_engine.get_latest_article_urls_snapshot()
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    self.logger.warning("Could not retrieve article URLs from RAG engine: %s", e)
+
+                return market_context, rag_urls
+
+            results = await asyncio.gather(
+                self._enrich_market_context(current_ticker=current_ticker),
+                run_tech_and_chart(),
+                run_rag_analysis()
+            )
+
+            chart_image, has_chart_analysis = results[1]
+            market_context, rag_urls = results[2]
+
+            self.article_urls.update(rag_urls)
+
+            if market_context:
+                self.prompt_builder.add_custom_instruction(market_context)
+            else:
+                self.logger.warning("No market context available for %s", self.symbol)
+
+            # Step 3.5: Generate brain context from CURRENT indicators (after technical analysis)
+            brain_context = None
+            if brain_service and self.context.technical_data:
+                brain_context = await self._generate_brain_context_from_current_indicators(
+                    brain_service, self.context.technical_data
+                )
+
+            # Step 4: Generate AI analysis
+            analysis_result = await self._generate_ai_analysis(
+                provider, model, additional_context, previous_response,
+                previous_indicators, position_context, performance_context,
+                brain_context, last_analysis_time, dynamic_thresholds,
+                precomputed_chart=(chart_image, has_chart_analysis) # Pass precomputed chart
+            )
+
+            # Reset custom instructions for next run
+            self.prompt_builder.custom_instructions = []
+
+            return analysis_result
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.logger.exception("Analysis failed: %s", e)
+            return {"error": str(e), "recommendation": "HOLD"}
+
+    async def _collect_market_data(self) -> bool:
+        """Collect market data using data collector"""
+        data_result = await self.data_collector.collect_data(self.context)
+        if not data_result["success"]:
+            self.logger.error("Failed to collect market data: %s", data_result['errors'])
+            return False
+
+        # Store article URLs (initial empty set, will be updated by parallel RAG task)
+        self.article_urls = self.data_collector.article_urls
+
+        return True
+
+    async def _enrich_market_context(self, current_ticker: dict[str, Any] | None = None) -> None:
+        """
+        Enrich market context with overview, microstructure, and coin details.
+        Uses asyncio.gather to fetch all three data sources in parallel.
+
+        Args:
+            current_ticker: Optional ticker data to reuse
+        """
+        async def _fetch_overview():
+            try:
+                overview = await self.rag_engine.get_market_overview()
+                return overview
+            except Exception as e:
+                self.logger.warning("Failed to fetch market overview: %s", e)
+                return {}
+
+        async def _fetch_microstructure():
+            try:
+                ms = await self.data_collector.data_fetcher.fetch_market_microstructure(
+                    self.symbol,
+                    cached_ticker=current_ticker
+                )
+                ms = self._apply_microstructure_snapshot_context(ms)
+                return ms
+            except Exception as e:
+                self.logger.warning("Failed to fetch market microstructure: %s", e)
+                return {}
+
+        async def _fetch_coin_details():
+            if not self.market_api:
+                return {}
+            try:
+                details = await self.market_api.get_coin_details(self.base_symbol)
+                if not details:
+                    self.logger.warning("No coin details found for %s", self.base_symbol)
+                return details
+            except Exception as e:
+                self.logger.warning("Failed to fetch coin details for %s: %s", self.base_symbol, e)
+                return {}
+
+        market_overview, microstructure, coin_details = await asyncio.gather(
+            _fetch_overview(),
+            _fetch_microstructure(),
+            _fetch_coin_details(),
+            return_exceptions=False
+        )
+
+        self.context.market_overview = market_overview
+        self.context.market_microstructure = microstructure
+        self.context.coin_details = coin_details
+
+    def _copy_comparison_bucket(self, bucket: dict[str, Any]) -> dict[str, float]:
+        """Copy only numeric fields needed for snapshot-to-snapshot comparisons."""
+        return {
+            'bid_depth': float(bucket.get('bid_depth', 0.0)),
+            'ask_depth': float(bucket.get('ask_depth', 0.0)),
+            'imbalance': float(bucket.get('imbalance', 0.0))
+        }
+
+    def _build_order_book_comparison_state(self, order_book: dict[str, Any]) -> dict[str, Any]:
+        """Persist only compact order book metrics needed for the next-cycle delta."""
+        return {
+            'timestamp': order_book.get('timestamp'),
+            'spread': float(order_book.get('spread', 0.0)),
+            'spread_percent': float(order_book.get('spread_percent', 0.0)),
+            'bid_depth': float(order_book.get('bid_depth', 0.0)),
+            'ask_depth': float(order_book.get('ask_depth', 0.0)),
+            'imbalance': float(order_book.get('imbalance', 0.0)),
+            'best_bid_size': float(order_book.get('best_bid_size', 0.0)),
+            'best_ask_size': float(order_book.get('best_ask_size', 0.0)),
+            'depth_by_level': {
+                key: self._copy_comparison_bucket(bucket)
+                for key, bucket in order_book.get('depth_by_level', {}).items()
+            },
+            'liquidity_near_mid': {
+                key: self._copy_comparison_bucket(bucket)
+                for key, bucket in order_book.get('liquidity_near_mid', {}).items()
+            }
+        }
+
+    def _build_order_book_deltas(
+        self,
+        current_order_book: dict[str, Any],
+        previous_order_book: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """Build deltas versus the immediately previous analysis-cycle snapshot."""
+        if not previous_order_book:
+            return {}
+
+        current_timestamp = current_order_book.get('timestamp')
+        previous_timestamp = previous_order_book.get('timestamp')
+        snapshot_interval_seconds = None
+        if current_timestamp and previous_timestamp:
+            snapshot_interval_seconds = max(0.0, (current_timestamp - previous_timestamp) / 1000)
+
+        top_10_current = current_order_book.get('depth_by_level', {}).get('10', {})
+        top_10_previous = previous_order_book.get('depth_by_level', {}).get('10', {})
+        near_mid_current = current_order_book.get('liquidity_near_mid', {}).get('10bps', {})
+        near_mid_previous = previous_order_book.get('liquidity_near_mid', {}).get('10bps', {})
+
+        return {
+            'snapshot_interval_seconds': snapshot_interval_seconds,
+            'spread': float(current_order_book.get('spread', 0.0)) - float(previous_order_book.get('spread', 0.0)),
+            'spread_percent': float(current_order_book.get('spread_percent', 0.0)) - float(previous_order_book.get('spread_percent', 0.0)),
+            'bid_depth': float(current_order_book.get('bid_depth', 0.0)) - float(previous_order_book.get('bid_depth', 0.0)),
+            'ask_depth': float(current_order_book.get('ask_depth', 0.0)) - float(previous_order_book.get('ask_depth', 0.0)),
+            'imbalance': float(current_order_book.get('imbalance', 0.0)) - float(previous_order_book.get('imbalance', 0.0)),
+            'best_bid_size': float(current_order_book.get('best_bid_size', 0.0)) - float(previous_order_book.get('best_bid_size', 0.0)),
+            'best_ask_size': float(current_order_book.get('best_ask_size', 0.0)) - float(previous_order_book.get('best_ask_size', 0.0)),
+            'top_10': {
+                'bid_depth': float(top_10_current.get('bid_depth', 0.0)) - float(top_10_previous.get('bid_depth', 0.0)),
+                'ask_depth': float(top_10_current.get('ask_depth', 0.0)) - float(top_10_previous.get('ask_depth', 0.0)),
+                'imbalance': float(top_10_current.get('imbalance', 0.0)) - float(top_10_previous.get('imbalance', 0.0)),
+            },
+            'near_mid_10bps': {
+                'bid_depth': float(near_mid_current.get('bid_depth', 0.0)) - float(near_mid_previous.get('bid_depth', 0.0)),
+                'ask_depth': float(near_mid_current.get('ask_depth', 0.0)) - float(near_mid_previous.get('ask_depth', 0.0)),
+                'imbalance': float(near_mid_current.get('imbalance', 0.0)) - float(near_mid_previous.get('imbalance', 0.0)),
+            }
+        }
+
+    def _apply_microstructure_snapshot_context(self, microstructure: dict[str, Any]) -> dict[str, Any]:
+        """Attach snapshot metadata and previous-cycle deltas to microstructure data."""
+        snapshot_context = {
+            'is_live_snapshot': True,
+            'configured_timeframe': self.context.timeframe if self.context else self.timeframe,
+            'comparison_basis': 'previous_analysis_cycle_snapshot',
+            'comparison_available': False
+        }
+
+        order_book = microstructure.get('order_book')
+        if not order_book:
+            microstructure['snapshot_context'] = snapshot_context
+            return microstructure
+
+        previous_snapshot = self.previous_microstructure_snapshots.get(self.symbol, {})
+        previous_order_book = previous_snapshot.get('order_book')
+        order_book_delta = self._build_order_book_deltas(order_book, previous_order_book)
+        if order_book_delta:
+            order_book['delta_from_previous_snapshot'] = order_book_delta
+            snapshot_context['comparison_available'] = True
+
+        microstructure['order_book'] = order_book
+        microstructure['snapshot_context'] = snapshot_context
+        self.previous_microstructure_snapshots[self.symbol] = {
+            'timestamp': microstructure.get('timestamp'),
+            'order_book': self._build_order_book_comparison_state(order_book)
+        }
+        return microstructure
+
+    async def _perform_technical_analysis(self) -> None:
+        """Perform all technical analysis steps"""
+        await self._calculate_technical_indicators()
+
+        await self._process_long_term_data()
+
+        await asyncio.to_thread(self.metrics_calculator.update_period_metrics, self.context)
+
+        technical_patterns = await asyncio.to_thread(
+            self.pattern_analyzer.detect_patterns,
+            self.context.ohlcv_candles,
+            self.context.technical_history,
+            self.context.long_term_data,
+            self.context.timestamps
+        )
+
+        if any(technical_patterns.values()):
+            self.context.technical_patterns = technical_patterns
+
+    async def _generate_ai_analysis(
+        self,
+        provider: str | None,
+        model: str | None,
+        additional_context: str | None = None,
+        previous_response: str | None = None,
+        previous_indicators: dict[str, Any] | None = None,
+        position_context: str | None = None,
+        performance_context: str | None = None,
+        brain_context: str | None = None,
+        last_analysis_time: str | None = None,
+        dynamic_thresholds: dict[str, Any] | None = None,
+        precomputed_chart: tuple[io.BytesIO | None, bool] | None = None
+    ) -> dict[str, Any]:
+        """Generate AI analysis using prompt builder and result processor"""
+
+        if precomputed_chart:
+            chart_image, has_chart_analysis = precomputed_chart
+        else:
+            has_chart_analysis = self.model_manager.supports_image_analysis(provider)
+            chart_image: io.BytesIO | None = None
+
+            if has_chart_analysis:
+                chart_image = await self._generate_chart_image()
+                if chart_image is None:
+                    has_chart_analysis = False
+                    self.logger.warning("Chart generation failed, proceeding without chart analysis")
+
+        system_prompt = self.prompt_builder.build_system_prompt(
+            self.symbol,
+            self.context,
+            previous_response,
+            performance_context,
+            brain_context,
+            last_analysis_time,
+            has_chart_analysis,
+            dynamic_thresholds,
+        )
+        prompt = self.prompt_builder.build_prompt(
+            context=self.context,
+            additional_context=additional_context,
+            previous_indicators=previous_indicators,
+            position_context=position_context
+        )
+        prompt_metadata = self.prompt_builder.get_prompt_metadata()
+        prompt_lint = self.prompt_builder.validate_and_warn(system_prompt, prompt, self.token_counter)
+        self.last_prompt_metadata = prompt_metadata
+        self.last_prompt_lint = prompt_lint
+        if prompt_lint["warnings"]:
+            self.logger.warning("Prompt preflight warnings: %s", prompt_lint["warnings"])
+        analysis_result = await self._execute_ai_request(
+            system_prompt, prompt, provider, model, chart_image
+        )
+
+        analysis_result["article_urls"] = self.article_urls
+        analysis_result["timeframe"] = self.context.timeframe
+        actual_provider, actual_model = self.model_manager.describe_provider_and_model(
+            provider, model, chart=has_chart_analysis
+        )
+        analysis_result["provider"] = actual_provider
+        analysis_result["model"] = actual_model
+        analysis_result["chart_analysis"] = has_chart_analysis
+        analysis_result["prompt_metadata"] = prompt_metadata
+        analysis_result["prompt_lint"] = prompt_lint
+
+        if self.context.technical_data:
+            analysis_result["technical_data"] = self.context.technical_data
+
+        if self.context.sentiment:
+            analysis_result["sentiment"] = self.context.sentiment
+
+        if self.context.market_microstructure:
+            analysis_result["market_microstructure"] = self.context.market_microstructure
+
+        if self.last_generated_prompt:
+            analysis_result["generated_prompt"] = self.last_generated_prompt
+
+        return analysis_result
+
+    async def _execute_ai_request(
+        self,
+        system_prompt: str,
+        prompt: str,
+        provider: str | None,
+        model: str | None,
+        chart_image: io.BytesIO | None = None
+    ) -> dict[str, Any]:
+        """Execute the AI request with optional chart image for visual analysis.
+
+        Args:
+            system_prompt: System instructions for the AI
+            prompt: User prompt with market data
+            provider: Optional provider override
+            model: Optional model override
+            chart_image: Optional chart image for visual analysis
+
+        Returns:
+            Analysis result dictionary
+        """
+        if provider and model:
+            self.logger.info("Using admin-specified provider: %s, model: %s", provider, model)
+
+        # Give result processor access to context for current_price
+        self.result_processor.context = self.context
+
+        # Pass chart image to result processor (it will use chart analysis if image provided)
+
+        # Dashboard: Store both prompts for monitoring
+        self.last_generated_prompt = prompt
+        self.last_prompt_timestamp = datetime.now().isoformat()
+        self.last_system_prompt = system_prompt
+        if chart_image:
+            self.last_chart_buffer = io.BytesIO(chart_image.getvalue())
+
+        result = await self.result_processor.process_analysis(
+            system_prompt, prompt, chart_image=chart_image, provider=provider, model=model
+        )
+        self.last_llm_response = result.get("raw_response")
+        self.last_response_timestamp = datetime.now().isoformat()
+        self.last_response_validation = result.get("response_validation")
+        return result
+
+    async def _generate_chart_image(self) -> io.BytesIO | None:
+        """Generate chart image for AI visual analysis.
+
+        Returns:
+            BytesIO containing PNG chart image, or None if generation fails
+        """
+        try:
+            if self.context.ohlcv_candles is None or len(self.context.ohlcv_candles) == 0:
+                self.logger.warning("No OHLCV data available for chart generation")
+                return None
+
+            timestamps = self.context.timestamps
+
+            technical_history = self.context.technical_history
+
+            chart_image = await self.chart_generator.create_chart_image(
+                ohlcv=self.context.ohlcv_candles,
+                technical_history=technical_history,
+                pair_symbol=self.symbol,
+                timeframe=self.context.timeframe,
+                save_to_disk=self.config.DEBUG_SAVE_CHARTS,
+                timestamps=timestamps
+            )
+
+            if isinstance(chart_image, str):
+                with open(chart_image, 'rb') as f:
+                    img_buffer = io.BytesIO(f.read())
+                    img_buffer.seek(0)
+                    return img_buffer
+            else:
+                return chart_image
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.logger.error("Failed to generate chart image: %s", e)
+            return None
+
+    async def _calculate_technical_indicators(self) -> None:
+        """Calculate technical indicators using the technical calculator"""
+        # Offload CPU-bound technical analysis to a separate thread to avoid blocking the event loop
+        indicators = await asyncio.to_thread(
+            self.technical_calculator.get_indicators,
+            self.context.ohlcv_candles
+        )
+
+        self.context.technical_history = indicators
+
+        technical_data = {}
+        for key, values in indicators.items():
+            try:
+                if values is None or np.isnan(values).all():
+                    continue
+
+                if isinstance(values, np.ndarray) and values.ndim == 1:
+                    technical_data[key] = float(values[-1])
+
+                elif isinstance(values, np.ndarray) and values.ndim > 1:
+                    technical_data[key] = [float(values[i, -1]) for i in range(values.shape[0])]
+
+                elif isinstance(values, tuple) and all(isinstance(item, np.ndarray) for item in values):
+                    technical_data[key] = [float(array[-1]) for array in values]
+
+                elif isinstance(values, list):
+                    if all(isinstance(item, np.ndarray) for item in values):
+                        technical_data[key] = [float(array[-1]) for array in values]
+                    else:
+                        technical_data[key] = values
+
+                else:
+                    technical_data[key] = float(values)
+
+            except (IndexError, TypeError, ValueError) as e:
+                self.logger.warning("Could not process indicator '%s': %s", key, e)
+                continue
+
+        self.context.technical_data = technical_data
+
+    async def _process_long_term_data(self) -> None:
+        """Process long-term historical data and calculate metrics"""
+        if self.context.long_term_data is None:
+            self.logger.debug("No long-term data available to process")
+            return
+
+        if 'data' not in self.context.long_term_data or self.context.long_term_data['data'] is None:
+            self.logger.debug("Long-term data contains no OHLCV data")
+            return
+
+        try:
+            long_term_indicators = await asyncio.to_thread(
+                self.technical_calculator.get_long_term_indicators,
+                self.context.long_term_data['data']
+            )
+
+            self.context.long_term_data.update(long_term_indicators)
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error processing long-term data: %s", str(e))
+
+        if self.context.weekly_ohlcv is not None:
+            try:
+                weekly_macro = await asyncio.to_thread(
+                    self.technical_calculator.get_weekly_macro_indicators,
+                    self.context.weekly_ohlcv
+                )
+                self.context.weekly_macro_indicators = weekly_macro
+
+                if 'weekly_macro_trend' in weekly_macro:
+                    trend = weekly_macro['weekly_macro_trend']
+                    self.logger.info("Weekly Macro: %s (%s%%)", trend.get('trend_direction'), trend.get('confidence_score'))
+                    if trend.get('cycle_phase'):
+                        self.logger.info("Cycle Phase: %s", trend['cycle_phase'])
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                self.logger.error("Error calculating weekly macro indicators: %s", str(e))
+                self.context.weekly_macro_indicators = None
+        else:
+            self.context.weekly_macro_indicators = None
+
+    async def _generate_brain_context_from_current_indicators(self, brain_service, technical_data: dict[str, Any]) -> str:
+        """Generate brain context using CURRENT technical indicators.
+
+        Offloads blocking ChromaDB queries and CPU-bound embedding operations
+        to a thread pool via asyncio.to_thread to avoid stalling the event loop.
+
+        Args:
+            brain_service: TradingBrainService instance
+            technical_data: dict of current technical indicators
+
+        Returns:
+            Formatted brain context string
+        """
+        # pylint: disable=too-many-branches, too-many-statements, too-many-locals
+        trend_direction = classify_trend_direction(technical_data)
+
+        adx_value = technical_data.get("adx", 0.0)
+
+        volatility_level = classify_volatility_level(technical_data)
+
+        rsi_level = classify_rsi_level(technical_data)
+
+        macd_signal = classify_macd_signal(technical_data)
+
+        volume_state = classify_volume_state(technical_data)
+
+        bb_position = classify_bb_position(technical_data, self.context.current_price)
+
+        is_weekend = datetime.now().weekday() >= 5
+
+        market_sentiment = classify_market_sentiment(self.context.sentiment)
+
+        order_book_bias = classify_order_book_bias(self.context.market_microstructure)
+
+        rsi_value = technical_data.get("rsi", 50.0)
+        exit_execution_context = build_exit_execution_context_from_config(
+            self.config,
+            self.timeframe,
+        )
+
+        return await asyncio.to_thread(
+            brain_service.get_context,
+            trend_direction=trend_direction,
+            adx=adx_value,
+            rsi=rsi_value,
+            volatility_level=volatility_level,
+            rsi_level=rsi_level,
+            macd_signal=macd_signal,
+            volume_state=volume_state,
+            bb_position=bb_position,
+            is_weekend=is_weekend,
+            market_sentiment=market_sentiment,
+            order_book_bias=order_book_bias,
+            exit_execution_context=exit_execution_context,
+        )
+

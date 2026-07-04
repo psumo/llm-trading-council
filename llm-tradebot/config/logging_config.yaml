@@ -1,0 +1,54 @@
+# 日志配置文件 - 简化版
+# 只保留关键信息，去除冗余日志
+
+logging:
+  # 主日志级别
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  
+  # 文件日志
+  file:
+    enabled: true
+    path: "logs/trading.log"
+    rotation: "100 MB"
+    retention: "7 days"
+  
+  # 控制台输出配置
+  console:
+    enabled: true
+    simplified: true  # 简化模式：只显示关键信息
+    
+  # 各模块日志级别（可单独控制）
+  modules:
+    # 核心模块 - 保持INFO
+    trading: "INFO"
+    decision: "INFO"
+    risk: "INFO"
+    execution: "INFO"
+    
+    # 数据模块 - 降低到WARNING（减少输出）
+    data_fetch: "WARNING"
+    data_process: "WARNING"
+    data_saver: "WARNING"  # 关键：减少数据保存日志
+    
+    # 技术指标 - 降低到WARNING
+    indicators: "WARNING"
+    features: "WARNING"
+    
+    # API调用 - 降低到WARNING
+    binance_api: "WARNING"
+    
+  # 需要静音的特定日志（完全不显示）
+  mute:
+    - "保存 JSON"
+    - "保存 CSV" 
+    - "保存 Parquet"
+    - "步骤1数据已保存"
+    - "步骤2数据已保存"
+    - "步骤3数据已保存"
+    - "特征工程完成"
+    - "开始特征工程"
+    - "Warm-up标记"
+    - "开始验证"
+    - "数据验证通过"
+    - "快照生成"
+    - "处理K线"

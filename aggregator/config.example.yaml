@@ -1,0 +1,186 @@
+# =====================================================
+# config.example.yaml -- copy to config.yaml and edit.
+#   cp config.example.yaml config.yaml
+# Replace every <STACK_ROOT> with the absolute path of your clone
+# (forward slashes work on Windows too, e.g. C:/repos/trading-confluence).
+# =====================================================
+
+# Signal-Confluence Aggregator configuration.
+# Validated at startup by config.py (pydantic). Edit values, not structure.
+
+# ---- Instruments (multi-pair) ----
+# Each instrument runs its own sources / confluence / judge / paper position.
+#   voices: which sources run. Each symbol now has a dedicated single-pair
+#           llm_trader instance, so all four list it.
+#   llm_trader_paths (optional): per-instrument override of the global
+#           llm_trader db_path/last_analysis_path -> points at that symbol's
+#           own trader instance data dir. BTC omits it and uses the global block.
+#   timeframes: order-flow + tradebot trend timeframes fed to the judge.
+#   confluence (optional): per-instrument override; defaults clamp to the voice
+#           count (a 3-voice instrument ALERTs on 2/3, STRONG on 3/3).
+# A legacy top-level `symbol:` (no `instruments:` list) is auto-migrated.
+instruments:
+  # Single focus pair: 3 voices x [5m, 15m, 1h] on BTC (24/7 market).
+  # Uses the global llm_trader block (main repo instance, dashboard :8000).
+  - symbol: BTCUSDT
+    timeframes: ["5m", "15m", "1h"]
+    voices: ["llm_trader", "llm_tradebot", "orderflow"]
+
+dashboard:
+  host: 127.0.0.1
+  port: 8500
+
+# How often the polling loop wakes (seconds). Each source has its own
+# effective cadence but the loop tick gates everything.
+poll_interval_seconds: 15
+
+# ---- Source 1: LLM_trader (Gemini Pro voice), SQLite append-only ----
+llm_trader:
+  enabled: true
+  # trade_history.db lives in the trader's data/trading dir. May not exist
+  # until the bot's first decision; the source degrades to offline.
+  db_path: "<STACK_ROOT>/llm-trader/data/trading/trade_history.db"
+  last_analysis_path: "<STACK_ROOT>/llm-trader/data/trading/last_analysis.json"
+  # A vote older than this decays to neutral (LLM voice -> 30 min).
+  staleness_seconds: 1800
+
+# ---- Source 2: LLM-TradeBot (Gemini Flash voice), HTTP JSON API ----
+llm_tradebot:
+  enabled: true
+  # Moved to 8001 via $env:PORT in its run-paper.ps1 (see start-all.ps1).
+  base_url: "http://127.0.0.1:8001"
+  password: "admin"
+  staleness_seconds: 1800
+  request_timeout_seconds: 8
+
+# ---- Source 3: orderflow (order-flow voice), TimescaleDB ----
+orderflow:
+  enabled: true
+  host: 127.0.0.1
+  port: 5455
+  user: postgres
+  db: postgres
+  # Password is NOT stored here. Read at runtime from the orderflow .env.
+  env_path: "<STACK_ROOT>/orderflow/.env"
+  # Orderflow data is fast-moving -> short staleness (5 min).
+  staleness_seconds: 300
+  request_timeout_seconds: 8
+  # Footprint analysis thresholds.
+  interval: "1m"          # candle interval to read
+  lookback_candles: 5     # how many recent 1m candles to combine
+  tick_size: 0.1   # BTC-USDT-SWAP tick on OKX
+  imbalance_ratio: 3.0    # volSumBid >= ratio * volSumAsk (one tick below) = buy imbalance
+  stacked_levels: 3       # >= N consecutive imbalanced levels = stacked
+  delta_min_abs: 0.0      # min |sum(volumeDelta)| to count delta as directional
+
+# ---- Confluence engine ----
+confluence:
+  # Weight per source (used for the agreement score; equal by default).
+  weights:
+    llm_trader: 1.0
+    llm_tradebot: 1.0
+    orderflow: 1.0
+  # ALERT when >= alert_min agree; STRONG when all non-offline agree and
+  # count >= strong_min.
+  alert_min_agree: 2
+  strong_min_agree: 3
+
+# ---- Notifications ----
+notify:
+  enabled: true
+  # Don't re-alert the same direction within this window (seconds).
+  cooldown_seconds: 600
+  toast_app_id: "Confluence Aggregator"
+
+# ---- Persistence ----
+persistence:
+  events_path: "<STACK_ROOT>/aggregator/data/events.jsonl"
+  max_log_events: 50   # rolling window served to the dashboard
+
+# ---- LLM Judge (the aggregated trading indicator) ----
+# A Gemini call that receives all three sources' full payloads + current price
+# and returns ONE aggregated position assessment (direction/conviction/levels).
+judge:
+  enabled: true
+  # Fast/cheap default. For a stronger (slower, pricier) call use
+  # "gemini-3.1-pro-preview".
+  model: "gemini-3.5-flash"
+  # GEMINI_API_KEY is read at runtime from this .env -- NEVER stored here.
+  api_key_env_path: "<STACK_ROOT>/llm-tradebot/.env"
+  # Never call more often than this (rate floor).
+  min_interval_seconds: 120
+  # Force a refresh if the last result is older than this (staleness ceiling).
+  max_age_seconds: 300
+  # Toast when the judge flips to LONG/SHORT with conviction >= this.
+  alert_conviction: 60
+  timeout_seconds: 30
+  # How many recent closed trades to feed the judge MEMORY section.
+  memory_last_n: 10
+  # entry_conviction at/above which the judge would ACT (enter). Below this is a
+  # no-trade (FLAT). Fed into the prompt's calibration block.
+  act_threshold: 50
+  # R:R floor for scalps fed into the prompt (prefer higher; do NOT demand 2.0).
+  rr_floor: 1.3
+
+# ---- Per-voice scorecards ----
+# Independently score each source against price outcomes. Every tick a source's
+# current direction (on a CHANGE) is recorded with the live price; the row is
+# resolved once horizon_minutes have elapsed by comparing the live price then.
+scorecards:
+  enabled: true
+  horizon_minutes: 60     # resolve a signal this long after it was recorded
+  min_move_pct: 0.1       # |move %| below this counts as "flat" (excluded)
+  window: 50              # rolling window of resolved signals per voice
+
+# ---- Judge reflection (lessons learned) ----
+# A periodic separate Gemini call that reviews the closed-trade journal and the
+# active lessons, proposing lessons to add / retire. Resilient: failures are
+# logged and the loop continues.
+reflection:
+  enabled: true
+  min_new_trades: 5       # closed trades since last reflection to trigger one
+  min_interval_hours: 24  # never reflect more often than this
+  max_lesson_age_days: 30 # auto-retire stale, unconfirmed lessons older than this
+  lessons_path: "<STACK_ROOT>/aggregator/data/lessons.json"
+
+# ---- Paper-trading position tracker ----
+# Opens a virtual position from each decisive judge verdict, monitors it against
+# the live Binance futures price, and tracks paper-account performance. One open
+# position at a time. State persists in data/positions.db (SQLite, WAL).
+tracker:
+  enabled: true
+  # Minimum judge ENTRY_CONVICTION (0-100) to open a paper position. This is now
+  # the decoupled conviction-to-enter signal (NOT flat_confidence, NOT the old
+  # conflated conviction). Lowered to 50 to loosen the entry gate.
+  min_conviction: 50
+  # Percent of current balance risked per trade (entry-to-stop distance).
+  risk_pct: 1.0
+  # Starting paper-account balance (USD).
+  start_balance: 1000.0
+  # Force-close (timeout) a position older than this many hours.
+  max_hold_hours: 12
+  # When false, skip the Binance REST price poll and use the orderflow
+  # footprint close as the only price source.
+  price_poll: true
+  price_timeout_seconds: 5
+  db_path: "<STACK_ROOT>/aggregator/data/positions.db"
+
+# ---- Pre-execution guards (composable pre-trade rejection chain) ----
+# Every guard runs before a paper position opens; ALL rejections are logged as a
+# POSITION_BLOCKED event and the open is suppressed. Defaults encode lessons
+# from 7 logged losers:
+#   * 4 opened on a single agreeing voice (all lost)   -> min_agree
+#   * 3 had 0.05-0.09% stops, stopped within minutes   -> min_stop_pct
+#   * a 7-loss streak ran unthrottled                  -> cooldown + daily stop
+# A buggy guard fails SAFE (blocks). Set enabled: false to bypass the chain.
+guards:
+  enabled: true
+  # Non-vetoing confluence floor: counts ONLY the permission voices (llm_trader,
+  # llm_tradebot); order flow is a trigger, not a vote. The judge already fuses
+  # signals, so this is a sanity floor (1), not an AND-gate.
+  min_agree: 1
+  min_stop_pct: 0.10    # min |entry-stop|/entry %; scalp-appropriate (was 0.25)
+  cooldown_losses: 3    # consecutive losses (all symbols) that trip the cooldown
+  cooldown_minutes: 120 # block window after that loss streak
+  max_daily_loss_r: 3.0 # daily circuit breaker: <= -this summed R today -> block
+  max_concurrent: 3     # max simultaneous open positions across all symbols

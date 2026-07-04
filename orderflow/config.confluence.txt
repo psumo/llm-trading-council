@@ -1,0 +1,27 @@
+# Orderflow service config — host-run mode (NestJS on host, DB in Docker).
+# This is the template. Copy it into place as .env:  cp config.confluence.txt .env
+# DB points at the confluence_orderflow_db container published on host port 5455.
+DB_URL=postgresql://postgres:password@localhost:5455/postgres
+
+# RabbitMQ is optional. Disabled — the service writes footprint candles straight
+# to Postgres without it. Set USE_RABBITMQ=true + a RABBITMQ_URL to also publish
+# closed candles to the exchange below.
+USE_RABBITMQ=false
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+RABBITMQ_EXCHANGE=footprint_candles_exchange
+
+# Docker-mode published ports (only used by the repo's docker-compose.yml if you
+# run the exchange app in a container). Kept off the perp_trader_* range.
+BINANCE_DOCKER_PORT=5100
+BYBIT_DOCKER_PORT=5101
+OKX_DOCKER_PORT=5102
+BITGET_DOCKER_PORT=5103
+GATEIO_DOCKER_PORT=5104
+
+# --- Symbol selection (Binance USDT-M futures) ---
+# SPCXUSDT = TRADIFI_PERPETUAL (tokenised-stock style perp, tickSize 0.01).
+# It only trades during its market session, so footprint candles form only while
+# trades arrive — quiet periods produce no candles (the aggregator emits a candle
+# only when >=1 trade occurred that minute; it does NOT synthesise empty candles).
+# To fall back to a 24/7 liquid symbol, swap to: SYMBOLS=BTCUSDT
+SYMBOLS=SPCXUSDT

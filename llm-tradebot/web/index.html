@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM-TradeBot Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css?v=20260119_0300">
+    <link rel="stylesheet" href="/static/style-enhancements.css?v=20260222_1205">
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="./i18n.js"></script>
+</head>
+
+<body>
+    <!-- CRT Scanline Effect -->
+    <div class="crt-overlay"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="glass-panel header">
+            <div class="logo">
+                <span class="icon">🤖</span>
+                <div class="logo-text">
+                    <h1>LLM-TradeBot</h1>
+                    <span class="tagline">Adversarial Decision Framework</span>
+                </div>
+                <div class="social-links">
+                    <a href="https://github.com/EthanAlgoX/LLM-TradeBot" target="_blank" title="GitHub"
+                        class="social-link github">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                            <path
+                                d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                        </svg>
+                    </a>
+                    <a href="https://x.com/EthanAlgoX" target="_blank" title="Twitter / X" class="social-link twitter">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                            <path
+                                d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+            <div class="status-indicators">
+                <div class="controls">
+                    <!-- Mode Toggle: Test / Live -->
+                    <div class="mode-toggle-container">
+                        <button id="btn-mode-test" class="mode-toggle-btn active" title="Test Mode - No Real Trading">
+                            🧪 Test
+                        </button>
+                        <button id="btn-mode-live" class="mode-toggle-btn" title="Live Mode - Real Trading">
+                            💰 Live
+                        </button>
+                    </div>
+
+                    <!-- Settings Button - Elegant Text Style -->
+                    <button id="btn-settings" class="btn-settings-elegant" title="Settings">
+                        <span class="settings-icon">⚙️</span>
+                        <span class="settings-text" data-i18n="btn.settings">Settings</span>
+                    </button>
+
+                    <!-- Backtest Button -->
+                    <a href="/static/backtest.html" class="btn-settings-elegant" title="Backtest"
+                        style="text-decoration: none; margin-left: 10px;">
+                        <span class="settings-icon">🔬</span>
+                        <span class="settings-text" data-i18n="btn.backtest">Backtest</span>
+                    </a>
+
+                    <!-- Logout Button -->
+                    <button id="btn-logout" class="btn-settings-elegant" title="Logout" style="margin-left: 10px;"
+                        onclick="window.logout()">
+                        <span class="settings-icon">🚪</span>
+                        <span class="settings-text" data-i18n="btn.logout">Exit</span>
+                    </button>
+
+                    <!-- Language Toggle Button -->
+                    <button id="btn-language" class="btn-settings-elegant" title="切换语言 / Switch Language"
+                        style="margin-left: 10px;">
+                        <span class="settings-icon">🌐</span>
+                        <span id="lang-text" class="settings-text">中文</span>
+                    </button>
+
+                    <button id="btn-start" class="btn-control start" title="Start Trading"
+                        onclick="if(window.setControl) window.setControl('start');">▶</button>
+                    <button id="btn-pause" class="btn-control pause" title="Pause Trading"
+                        onclick="if(window.setControl) window.setControl('pause');">⏸</button>
+                    <button id="btn-stop" class="btn-control stop" title="Stop System"
+                        onclick="if(window.setControl) window.setControl('stop');">⏹</button>
+
+                    <select id="interval-selector" class="interval-selector" title="Cycle Interval">
+                        <option value="0.5">30 sec</option>
+                        <option value="1">1 min</option>
+                        <option value="3" selected>3 min</option>
+                        <option value="5">5 min</option>
+                        <option value="15">15 min</option>
+                        <option value="30">30 min</option>
+                        <option value="60">1 hour</option>
+                    </select>
+                </div>
+                <div class="status-item">
+                    <span class="label" data-i18n="header.mode">MODE</span>
+                    <span id="sys-mode" class="value badge">LOADING</span>
+                </div>
+                <div class="status-item">
+                    <span class="label" data-i18n="header.environment">ENVIRONMENT</span>
+                    <span id="sys-env" class="value badge">LOADING</span>
+                </div>
+                <div class="status-item">
+                    <span class="label" data-i18n="header.cycle">CYCLE</span>
+                    <span id="cycle-counter" class="value">#0</span>
+                </div>
+                <div class="status-item">
+                    <span class="label" data-i18n="header.equity">EQUITY</span>
+                    <span id="header-equity" class="value">$0.00</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <main class="dashboard-grid">
+            <div class="dashboard-layout hero-layout">
+                <!-- Left Sidebar: Account & Portfolios -->
+                <aside class="sidebar-left">
+                    <section class="row-charts-account">
+                        <div class="glass-panel card live-positions-card">
+                            <div class="card-header-compact">
+                                <h2 data-i18n="section.live_positions">📊 Live Positions</h2>
+                                <span id="position-count-badge" class="badge">0</span>
+                            </div>
+                            <div class="positions-summary">
+                                <div class="summary-item">
+                                    <span class="label" data-i18n="positions.total_unrealized">Total Unrealized
+                                        PnL</span>
+                                    <span id="total-unrealized-pnl" class="value neutral">$0.00</span>
+                                </div>
+                            </div>
+                            <div class="positions-list-container">
+                                <div id="position-details" class="position-details-list">
+                                    <span class="empty-msg">No active positions</span>
+                                </div>
+                            </div>
+
+                            <hr class="sidebar-divider">
+
+                            <!-- Compact Account Stats -->
+                            <div class="account-stats-compact">
+                                <div class="stat-row">
+                                    <span class="label" data-i18n="account.balance">Wallet Balance</span>
+                                    <span id="account-realtime-balance" class="value">$0.00</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span class="label" data-i18n="positions.realized_pnl">Realized PnL</span>
+                                    <span id="acc-pnl" class="value">$0.00</span>
+                                </div>
+                            </div>
+
+                            <hr class="sidebar-divider">
+
+                            <!-- LLM Metrics -->
+                            <div class="account-stats-compact llm-metrics-panel">
+                                <div class="stats-section-title">LLM API</div>
+                                <div class="stat-row">
+                                    <span class="label">Tokens (IN/OUT)</span>
+                                    <span id="llm-metrics-tokens" class="value">--/--</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span class="label">Tokens Total</span>
+                                    <span id="llm-metrics-total" class="value">--</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span class="label">Token Speed</span>
+                                    <span id="llm-metrics-speed" class="value">-- tps</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span class="label">Latency (min/avg/max)</span>
+                                    <span id="llm-metrics-latency" class="value">--/--/-- ms</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </aside>
+
+                <!-- Center Hero: Agent Chatroom -->
+                <section class="hero-center row-agent-framework">
+                    <div class="glass-panel card agent-framework-card hero-chatroom-card">
+                        <div class="card-header framework-header">
+                            <div class="framework-title-block">
+                                <h2 class="framework-title">🤖 Agent Chatroom</h2>
+                                <p class="framework-subtitle" data-i18n="framework.subtitle">Strategic Debate & Decision
+                                    Hub</p>
+                            </div>
+                            <div class="framework-controls">
+                                <span id="framework-cycle" class="cycle-badge">Cycle #0</span>
+                                <span id="current-symbol-display" class="current-symbol-badge">
+                                    📊 <span id="symbol-display-text">--</span>
+                                </span>
+                                <div id="llm-info-badge" class="current-symbol-badge"
+                                    style="background: rgba(0, 255, 157, 0.1); border-color: rgba(0, 255, 157, 0.3); display: none;">
+                                    🤖 <span id="llm-provider-text">--</span> (<span id="llm-model-text">--</span>)
+                                </div>
+                                <button id="btn-view-prompts" class="llm-toggle-btn" type="button"
+                                    style="margin-right: 5px;">Agent Config</button>
+                                <button id="btn-llm-toggle" class="llm-toggle-btn" type="button">LLM: OFF</button>
+                            </div>
+                        </div>
+                        <div class="chatroom-container hero-scroller">
+                            <div id="chatroom-messages" class="chatroom-messages">
+                                <div class="chatroom-empty">
+                                    <div class="icon">💬</div>
+                                    <p data-i18n="framework.chatroom.empty">Initializing neural pathways...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Right Sidebar: Performance & Stats -->
+                <aside class="sidebar-right">
+                    <section class="glass-panel card ranking-card">
+                        <h2 data-i18n="section.symbol_ranking">🏆 Ranking</h2>
+                        <div class="ranking-compact-container">
+                            <table id="symbol-ranking-table" class="compact-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Symbol</th>
+                                        <th class="text-right">PnL</th>
+                                        <th class="text-right">Win%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="symbol-ranking-body">
+                                    <tr>
+                                        <td colspan="4" class="text-center">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </aside>
+            </div> <!-- End hero-layout -->
+
+            <!-- Bottom: Detailed Records -->
+            <div class="bottom-detail-panels">
+                <section class="row-trades">
+                    <div class="glass-panel card trade-table-card">
+                        <div class="section-header-compact">
+                            <h2 data-i18n="section.trades">📜 Trade Records</h2>
+                        </div>
+                        <div class="table-container mini-records">
+                            <table id="trade-table">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="trade.time">Time</th>
+                                        <th data-i18n="trade.symbol">Symbol</th>
+                                        <th data-i18n="trade.direction">Side</th>
+                                        <th data-i18n="trade.entry">Entry</th>
+                                        <th data-i18n="trade.exit">Exit</th>
+                                        <th data-i18n="trade.pnl">PnL</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div> <!-- End container -->
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content settings-modal">
+            <div class="modal-header">
+                <h3>⚙️ Settings</h3>
+                <button id="close-settings" class="btn-close">×</button>
+            </div>
+
+            <div class="settings-tabs">
+                <button class="tab-btn active" data-tab="tab-keys">API Keys</button>
+                <button class="tab-btn" data-tab="tab-accounts">Accounts</button>
+            </div>
+
+            <div class="settings-body">
+                <!-- Tab: API Keys -->
+                <div id="tab-keys" class="tab-pane active">
+                    <div class="form-group">
+                        <label>Trading Mode</label>
+                        <select id="cfg-run-mode" class="form-control" style="border-color: #ecc94b;">
+                            <option value="test">Test Mode (Paper Trading)</option>
+                            <option value="live">Live Trading (Real Money)</option>
+                        </select>
+                        <p style="color: #a0aec0; font-size: 0.8em; margin-top: 4px;">Requires restart to apply change.
+                        </p>
+                    </div>
+
+                    <div id="binance-config-section">
+                        <div class="form-group">
+                            <label>Binance API Key</label>
+                            <input type="password" id="cfg-binance-key" class="form-control"
+                                placeholder="Saved (Hidden)">
+                        </div>
+                        <div class="form-group">
+                            <label>Binance Secret Key</label>
+                            <input type="password" id="cfg-binance-secret" class="form-control"
+                                placeholder="Saved (Hidden)">
+                        </div>
+                        <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+                    </div>
+
+                    <!-- LLM Provider Selection -->
+                    <div class="form-group">
+                        <label>🤖 LLM Provider</label>
+                        <select id="cfg-llm-provider" class="form-control" style="border-color: #00ff9d;">
+                            <option value="none">None (No LLM)</option>
+                            <option value="deepseek">DeepSeek (Default)</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="claude">Claude (Anthropic)</option>
+                            <option value="qwen">Qwen (通义千问)</option>
+                            <option value="gemini">Gemini (Google)</option>
+                            <option value="kimi">Kimi (Moonshot)</option>
+                            <option value="minimax">MiniMax</option>
+                            <option value="glm">GLM (Zhipu)</option>
+                        </select>
+                        <p style="color: #a0aec0; font-size: 0.75em; margin-top: 4px;">Requires restart to apply.</p>
+                    </div>
+
+                    <!-- DeepSeek API Key -->
+                    <div class="form-group llm-key-field" data-provider="deepseek">
+                        <label>DeepSeek API Key</label>
+                        <input type="password" id="cfg-deepseek-key" class="form-control" placeholder="Saved (Hidden)">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://platform.deepseek.com" target="_blank"
+                                style="color: #00ff9d">platform.deepseek.com</a></p>
+                    </div>
+
+                    <!-- OpenAI API Key -->
+                    <div class="form-group llm-key-field" data-provider="openai" style="display:none;">
+                        <label>OpenAI API Key</label>
+                        <input type="password" id="cfg-openai-key" class="form-control" placeholder="sk-...">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://platform.openai.com" target="_blank"
+                                style="color: #00ff9d">platform.openai.com</a></p>
+                    </div>
+
+                    <!-- Claude API Key -->
+                    <div class="form-group llm-key-field" data-provider="claude" style="display:none;">
+                        <label>Claude API Key</label>
+                        <input type="password" id="cfg-claude-key" class="form-control" placeholder="sk-ant-...">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://console.anthropic.com" target="_blank"
+                                style="color: #00ff9d">console.anthropic.com</a></p>
+                    </div>
+
+                    <!-- Qwen API Key -->
+                    <div class="form-group llm-key-field" data-provider="qwen" style="display:none;">
+                        <label>Qwen API Key</label>
+                        <input type="password" id="cfg-qwen-key" class="form-control" placeholder="Saved (Hidden)">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://dashscope.console.aliyun.com" target="_blank"
+                                style="color: #00ff9d">dashscope.console.aliyun.com</a></p>
+                    </div>
+
+                    <!-- Gemini API Key -->
+                    <div class="form-group llm-key-field" data-provider="gemini" style="display:none;">
+                        <label>Gemini API Key</label>
+                        <input type="password" id="cfg-gemini-key" class="form-control" placeholder="Saved (Hidden)">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://aistudio.google.com" target="_blank"
+                                style="color: #00ff9d">aistudio.google.com</a></p>
+                    </div>
+
+                    <!-- Kimi API Key -->
+                    <div class="form-group llm-key-field" data-provider="kimi" style="display:none;">
+                        <label>Kimi API Key</label>
+                        <input type="password" id="cfg-kimi-key" class="form-control" placeholder="Saved (Hidden)">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://platform.moonshot.ai" target="_blank"
+                                style="color: #00ff9d">platform.moonshot.ai</a></p>
+                    </div>
+
+                    <!-- MiniMax API Key -->
+                    <div class="form-group llm-key-field" data-provider="minimax" style="display:none;">
+                        <label>MiniMax API Key</label>
+                        <input type="password" id="cfg-minimax-key" class="form-control" placeholder="Saved (Hidden)">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://platform.minimax.io" target="_blank"
+                                style="color: #00ff9d">platform.minimax.io</a></p>
+                    </div>
+
+                    <!-- GLM API Key -->
+                    <div class="form-group llm-key-field" data-provider="glm" style="display:none;">
+                        <label>GLM API Key</label>
+                        <input type="password" id="cfg-glm-key" class="form-control" placeholder="Saved (Hidden)">
+                        <p style="color: #718096; font-size: 0.7em; margin-top: 2px;">Get key: <a
+                                href="https://open.bigmodel.cn" target="_blank"
+                                style="color: #00ff9d">open.bigmodel.cn</a></p>
+                    </div>
+                </div>
+
+                <!-- Tab: Accounts -->
+                <div id="tab-accounts" class="tab-pane">
+                    <div class="form-group">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                            <label style="margin:0;">📊 Trading Accounts</label>
+                            <button id="btn-refresh-accounts" class="btn-sm"
+                                style="background:#2d3748;color:white;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">🔄
+                                Refresh</button>
+                        </div>
+                        <div id="accounts-list"
+                            style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px; min-height: 100px; max-height: 200px; overflow-y: auto;">
+                            <p style="color: #718096; text-align: center;">Loading accounts...</p>
+                        </div>
+                    </div>
+
+                    <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+
+                    <div class="form-group">
+                        <label>➕ Add New Account</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <input type="text" id="new-account-id" class="form-control"
+                                placeholder="Account ID (e.g. sub-account-1)">
+                            <input type="text" id="new-account-name" class="form-control" placeholder="Display Name">
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                            <select id="new-account-exchange" class="form-control">
+                                <option value="binance">Binance</option>
+                            </select>
+                            <label style="display:flex; align-items:center; cursor:pointer;">
+                                <input type="checkbox" id="new-account-testnet" checked style="margin-right: 8px;">
+                                <span>Testnet Mode</span>
+                            </label>
+                        </div>
+                        <button id="btn-add-account"
+                            style="margin-top: 10px; background: #00ff9d; color: #1a202c; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">Add
+                            Account</button>
+                        <p style="color: #a0aec0; font-size: 0.75em; margin-top: 8px;">Note: Set API keys in .env with
+                            format: ACCOUNT_{ID}_API_KEY</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btn-save-settings" class="btn btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=20260222_0130"></script>
+    <script>
+        // Inline script removed (logic handled in app.js).
+    </script>
+
+    <!-- Agent Pipeline Interactive Script -->
+    <script>
+        (function () {
+            // Agent node click to expand
+            document.querySelectorAll(' .agent-node.interactive').forEach(node => {
+                node.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    const wasExpanded = this.classList.contains('expanded');
+                    // Close all expanded
+                    document.querySelectorAll('.agent-node.expanded').forEach(n => {
+                        n.classList.remove('expanded');
+                    });
+                    // Toggle this one
+                    if (!wasExpanded) {
+                        this.classList.add('expanded');
+                    }
+                });
+            });
+
+            // Close expanded on outside click
+            document.addEventListener('click', function () {
+                document.querySelectorAll('.agent-node.expanded').forEach(n => {
+                    n.classList.remove('expanded');
+                });
+            });
+
+            // Demo Run Button
+            const demoBtn = document.getElementById('btn-demo-run');
+            if (demoBtn) {
+                demoBtn.addEventListener('click', function () {
+                    runPipelineDemo();
+                });
+            }
+
+            // Pipeline Demo Animation
+            function runPipelineDemo() {
+                const agents = [
+                    { id: 'agent-data-sync', status: '✅ Fetched 3 TFs', result: '1m/5m/15m OK' },
+                    { id: 'agent-quant', status: '✅ Analyzed', result: 'EMA↑ RSI=42' },
+                    { id: 'agent-predict', status: '✅ Predicted', result: 'P(Up): 68%' },
+                    { id: 'agent-filter', status: '✅ Passed', result: 'Layers: ✓✓✓✓' },
+                    { id: 'agent-decision', status: '✅ LONG', result: 'Action: LONG' },
+                    { id: 'agent-risk', status: '✅ Approved', result: 'Risk: LOW' }
+                ];
+                const arrows = document.querySelectorAll('.pipeline-arrow.animated');
+                const btn = document.getElementById('btn-demo-run');
+
+                // Disable button during demo
+                btn.disabled = true;
+                btn.textContent = '⏳ Running...';
+
+                // Reset all agents
+                document.querySelectorAll('.agent-node').forEach(node => {
+                    node.classList.remove('running', 'completed', 'error');
+                    const statusEl = node.querySelector('.agent-status');
+                    if (statusEl) statusEl.textContent = '⏸️ Idle';
+                });
+                arrows.forEach(a => a.classList.remove('active'));
+
+                // Run through each agent
+                let i = 0;
+                function activateNext() {
+                    if (i >= agents.length) {
+                        // Demo complete
+                        btn.disabled = false;
+                        btn.textContent = '▶️ Demo Run';
+                        addActivityFeedEntry('Demo complete - LONG signal generated');
+                        return;
+                    }
+
+                    const agent = agents[i];
+                    const node = document.getElementById(agent.id);
+
+                    if (node) {
+                        // Start running
+                        node.classList.add('running');
+                        const statusEl = node.querySelector('.agent-status');
+                        if (statusEl) statusEl.textContent = '⏳ Running...';
+                        const resultEl = node.querySelector('.detail-result');
+
+                        // Add activity entry
+                        const agentName = node.querySelector('.agent-name').textContent;
+                        addActivityFeedEntry(`${agentName}: Processing...`);
+
+                        setTimeout(() => {
+                            // Complete
+                            node.classList.remove('running');
+                            node.classList.add('completed');
+                            if (statusEl) statusEl.textContent = agent.status;
+                            if (resultEl) resultEl.textContent = agent.result;
+
+                            // Activate arrow
+                            if (i < arrows.length) {
+                                arrows[i].classList.add('active');
+                            }
+                            i++;
+                            setTimeout(activateNext, 300);
+                        }, 600);
+                    } else {
+                        i++;
+                        activateNext();
+                    }
+                }
+                activateNext();
+            }
+
+            // Add entry to activity feed function
+            function addActivityFeedEntry(message) {
+                const feed = document.getElementById('agent-activity-feed');
+                if (!feed) return;
+
+                // Remove placeholder if exists
+                const placeholder = feed.querySelector('.placeholder');
+                if (placeholder) placeholder.remove();
+
+                // Create new entry
+                const entry = document.createElement('div');
+                entry.className = 'activity-item success';
+                const now = new Date();
+                const time = now.toTimeString().slice(0, 8);
+                entry.innerHTML = `
+                    <span class="activity-time">${time}</span>
+                    <span class="activity-agent">Pipeline</span>
+                    <span class="activity-message">${message}</span>
+                `;
+
+                feed.insertBefore(entry, feed.firstChild);
+
+                // Update count
+                const countEl = document.getElementById('activity-count');
+                if (countEl) {
+                    countEl.textContent = feed.querySelectorAll('.activity-item:not(.placeholder)').length;
+                }
+
+                // Limit entries
+                const entries = feed.querySelectorAll('.activity-item');
+                if (entries.length > 20) {
+                    entries[entries.length - 1].remove();
+                }
+            }
+        })();
+    </script>
+
+    <!-- Demo Flow Animation Script -->
+    <script>
+        (function () {
+            const demoFlowBtn = document.getElementById('btn-demo-flow');
+            if (demoFlowBtn) {
+                demoFlowBtn.addEventListener('click', runDemoFlow);
+            }
+
+            function runDemoFlow() {
+                const btn = document.getElementById('btn-demo-flow');
+                btn.disabled = true;
+                btn.textContent = '⏳ Running...';
+
+                // Reset all agents
+                document.querySelectorAll('.agent-box').forEach(box => {
+                    box.classList.remove('running', 'completed');
+                    const badge = box.querySelector('.agent-badge');
+                    if (badge) {
+                        badge.className = 'agent-badge idle';
+                        badge.textContent = 'Idle';
+                    }
+                });
+
+                // Reset outputs
+                document.querySelectorAll('.output-value').forEach(el => el.textContent = '--');
+                const decisionAction = document.querySelector('.decision-action');
+                const finalAction = document.querySelector('.final-action');
+                if (decisionAction) { decisionAction.textContent = 'WAIT'; decisionAction.className = 'decision-action'; }
+                if (finalAction) { finalAction.textContent = '--'; finalAction.className = 'final-action'; }
+
+                // Animation sequence
+                const steps = [
+                    // Layer 1: Data
+                    { delay: 0, action: () => activateAgent('flow-datasync', 'running') },
+                    {
+                        delay: 800, action: () => {
+                            updateOutputs({
+                                'out-tf-1': '✓ 150 bars',
+                                'out-tf-2': '✓ 96 bars',
+                                'out-tf-3': '✓ 240 bars',
+                                'out-oi': '+2.3%'
+                            });
+                            completeAgent('flow-datasync');
+                            activateConnector('particles-data');
+                        }
+                    },
+
+                    // Layer 2: Analysis (parallel agents)
+                    {
+                        delay: 1200, action: () => {
+                            activateAgent('flow-quant', 'running');
+                            activateAgent('flow-regime', 'running');
+                            activateAgent('flow-predict', 'running');
+                        }
+                    },
+                    {
+                        delay: 2000, action: () => {
+                            updateOutputs({
+                                'out-ema': '↑ Bull',
+                                'out-rsi': '42',
+                                'out-macd': '+0.02',
+                                'out-bb': 'Mid'
+                            });
+                            completeAgent('flow-quant');
+                        }
+                    },
+                    {
+                        delay: 2400, action: () => {
+                            updateOutputs({
+                                'out-regime': '🟢 Trend',
+                                'out-adx': '28',
+                                'out-regime-conf': '72%'
+                            });
+                            completeAgent('flow-regime');
+                        }
+                    },
+                    {
+                        delay: 2800, action: () => {
+                            const pup = document.getElementById('out-pup');
+                            const pdown = document.getElementById('out-pdown');
+                            if (pup) { pup.textContent = '68%'; pup.classList.add('bullish'); }
+                            if (pdown) { pdown.textContent = '32%'; pdown.classList.add('bearish'); }
+                            document.getElementById('out-signal').textContent = 'LONG';
+                            completeAgent('flow-predict');
+                            activateConnector('particles-analysis');
+                        }
+                    },
+
+                    // Layer 3: Decision
+                    { delay: 3300, action: () => activateAgent('flow-decision', 'running') },
+                    {
+                        delay: 4000, action: () => {
+                            const decAction = document.querySelector('.decision-action');
+                            const decConf = document.querySelector('.decision-conf');
+                            if (decAction) { decAction.textContent = 'LONG'; decAction.classList.add('long'); }
+                            if (decConf) decConf.textContent = '74%';
+                            document.getElementById('out-bull').textContent = '3.2';
+                            document.getElementById('out-bear').textContent = '1.1';
+                            completeAgent('flow-decision');
+                            activateConnector('particles-decision');
+                        }
+                    },
+
+                    // Layer 4: Risk & Output
+                    { delay: 4500, action: () => activateAgent('flow-risk', 'running') },
+                    {
+                        delay: 5200, action: () => {
+                            updateOutputs({
+                                'out-risk': '🟢 LOW',
+                                'out-size': '0.15 BTC',
+                                'out-sl': '-2.5%',
+                                'out-tp': '+5.0%'
+                            });
+                            completeAgent('flow-risk');
+
+                            // Final output
+                            const finalAct = document.querySelector('.final-action');
+                            if (finalAct) { finalAct.textContent = '📈 LONG'; finalAct.classList.add('long'); }
+                            document.getElementById('final-symbol').textContent = 'BTCUSDT';
+                            document.getElementById('final-size').textContent = '0.15 BTC';
+                            document.getElementById('flow-output').classList.add('completed');
+                        }
+                    },
+
+                    // Done
+                    {
+                        delay: 5800, action: () => {
+                            btn.disabled = false;
+                            btn.textContent = '▶️ Demo Flow';
+                            addFlowActivityEntry('✅ Cycle complete: LONG BTCUSDT @ 0.15 BTC');
+                        }
+                    }
+                ];
+
+                steps.forEach(step => {
+                    setTimeout(step.action, step.delay);
+                });
+            }
+
+            function activateAgent(id, state) {
+                const box = document.getElementById(id);
+                if (!box) return;
+                box.classList.add(state);
+                const badge = box.querySelector('.agent-badge');
+                if (badge) {
+                    badge.className = 'agent-badge ' + state;
+                    badge.textContent = state === 'running' ? 'Running' : 'Done';
+                }
+                addFlowActivityEntry(`${box.querySelector('.agent-title')?.textContent}: Processing...`);
+            }
+
+            function completeAgent(id) {
+                const box = document.getElementById(id);
+                if (!box) return;
+                box.classList.remove('running');
+                box.classList.add('completed');
+                const badge = box.querySelector('.agent-badge');
+                if (badge) {
+                    badge.className = 'agent-badge completed';
+                    badge.textContent = 'Done';
+                }
+            }
+
+            function activateConnector(id) {
+                const particles = document.getElementById(id);
+                if (!particles) return;
+                particles.parentElement.classList.add('active');
+                setTimeout(() => particles.parentElement.classList.remove('active'), 800);
+            }
+
+            function updateOutputs(outputs) {
+                Object.entries(outputs).forEach(([id, value]) => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = value;
+                });
+            }
+
+            function addFlowActivityEntry(message) {
+                const feed = document.getElementById('agent-activity-feed');
+                if (!feed) return;
+
+                const placeholder = feed.querySelector('.placeholder');
+                if (placeholder) placeholder.remove();
+
+                const entry = document.createElement('div');
+                entry.className = 'activity-item success';
+                const time = new Date().toTimeString().slice(0, 8);
+
+                entry.innerHTML = `
+                    <span class="activity-time">${time}</span>
+                    <span class="activity-agent">Framework</span>
+                    <span class="activity-message">${message}</span>
+                `;
+
+                feed.insertBefore(entry, feed.firstChild);
+
+                const countEl = document.getElementById('activity-count');
+                if (countEl) {
+                    countEl.textContent = feed.querySelectorAll('.activity-item:not(.placeholder)').length;
+                }
+
+                const entries = feed.querySelectorAll('.activity-item');
+                if (entries.length > 15) {
+                    entries[entries.length - 1].remove();
+                }
+            }
+        })();
+    </script>
+
+    <!-- Agent Config Modal -->
+    <div id="prompts-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content settings-modal agent-config-modal">
+            <div class="modal-header">
+                <h3>🧩 Agent Configuration</h3>
+                <button id="close-prompts" class="btn-close">×</button>
+            </div>
+            <div class="agent-config-body">
+                <div id="agent-config-tabs" class="agent-config-tabs">
+                    <!-- tabs injected by JS -->
+                </div>
+                <div id="agent-config-panel" class="agent-config-panel">
+                    <p style="color: #718096; text-align: center; padding: 20px;">Loading agent settings...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div id="agent-config-toast" class="agent-config-toast">Saved</div>
+                <button id="agent-config-save" class="btn-primary">Save Agent Config</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

@@ -1,0 +1,160 @@
+# =====================================
+# 多周期数据对齐配置
+# =====================================
+# 用于控制不同周期数据的实时性策略
+# 
+# 参考: DATA_FLOW_STRUCTURED.md - 多周期数据对齐与实时性问题
+
+# 全局模式选择
+mode: 'backtest'  # 选项: 'backtest' | 'live_safe' | 'live_aggressive'
+
+# 模式说明:
+# - backtest:        所有周期使用 iloc[-2]（已完成K线），保证回测一致性
+# - live_safe:       短周期 iloc[-1]（实时），长周期 iloc[-2]（稳定）
+# - live_aggressive: 所有周期 iloc[-1]（实时），追求最低滞后
+
+# =====================================
+# 模式详细配置
+# =====================================
+
+backtest:
+  description: "回测模式 - 所有周期使用已完成K线"
+  timeframes:
+    5m:
+      use_realtime: false  # 使用 iloc[-2]
+      max_lag_minutes: 10
+    15m:
+      use_realtime: false
+      max_lag_minutes: 40
+    1h:
+      use_realtime: false
+      max_lag_minutes: 145  # 2小时25分钟
+
+live_safe:
+  description: "实盘安全模式 - 短周期实时，长周期稳定"
+  timeframes:
+    5m:
+      use_realtime: true   # 使用 iloc[-1]
+      max_lag_minutes: 5
+    15m:
+      use_realtime: true
+      max_lag_minutes: 15
+    1h:
+      use_realtime: false  # 长周期保持稳定
+      max_lag_minutes: 145
+
+live_aggressive:
+  description: "实盘激进模式 - 所有周期实时数据"
+  timeframes:
+    5m:
+      use_realtime: true
+      max_lag_minutes: 5
+    15m:
+      use_realtime: true
+      max_lag_minutes: 15
+    1h:
+      use_realtime: true   # 接受重绘风险
+      max_lag_minutes: 60
+
+# =====================================
+# 数据时间戳检查
+# =====================================
+
+timestamp_validation:
+  enabled: true
+  
+  # 检查数据时间戳是否在合理范围内
+  max_allowed_lag:
+    5m: 15    # 5分钟数据最多滞后15分钟（允许一定网络延迟）
+    15m: 45   # 15分钟数据最多滞后45分钟
+    1h: 150   # 1小时数据最多滞后2.5小时
+  
+  # 如果数据滞后超过阈值，是否警告
+  warn_on_excessive_lag: true
+  
+  # 如果数据滞后超过阈值，是否拒绝使用
+  reject_on_excessive_lag: false
+
+# =====================================
+# 重绘风险管理
+# =====================================
+
+repaint_protection:
+  enabled: true
+  
+  # 检测K线收盘时的指标变化
+  track_indicator_changes: true
+  
+  # 如果指标变化超过阈值，是否警告
+  warn_on_significant_change:
+    rsi: 5.0      # RSI变化超过5
+    macd: 10.0    # MACD变化超过10%
+    price: 0.5    # 价格变化超过0.5%
+  
+  # 是否在K线收盘时重新验证信号
+  revalidate_on_close: true
+
+# =====================================
+# 日志配置
+# =====================================
+
+logging:
+  # 是否在日志中输出数据时间戳
+  log_data_timestamps: true
+  
+  # 是否在日志中输出滞后时间
+  log_lag_minutes: true
+  
+  # 是否在日志中标注数据是否实时
+  log_realtime_flag: true
+  
+  # 示例日志格式:
+  # [5m] price=96000 rsi=45.2 timestamp=2024-12-19T10:15:00 lag=10min realtime=false
+  # [1h] price=95800 rsi=52.8 timestamp=2024-12-19T08:00:00 lag=145min realtime=false
+
+# =====================================
+# 性能优化
+# =====================================
+
+performance:
+  # 是否缓存已完成K线的指标
+  cache_completed_candles: true
+  
+  # 缓存过期时间（秒）
+  cache_ttl_seconds: 300  # 5分钟
+  
+  # 是否并行处理多周期数据
+  parallel_processing: true
+
+# =====================================
+# 实验性功能
+# =====================================
+
+experimental:
+  # 是否使用加权时间对齐（根据滞后时间调整权重）
+  time_weighted_alignment:
+    enabled: false
+    weights:
+      5m: 1.0    # 滞后10分钟，权重 1.0
+      15m: 0.8   # 滞后40分钟，权重降低到 0.8
+      1h: 0.5    # 滞后145分钟，权重降低到 0.5
+  
+  # 是否使用外推法估算当前K线（基于历史波动率）
+  current_candle_estimation:
+    enabled: false
+    method: 'exponential_smoothing'  # 'linear' | 'exponential_smoothing'
+    confidence_threshold: 0.7
+
+# =====================================
+# 使用说明
+# =====================================
+# 
+# 1. 修改全局 mode 来快速切换模式
+# 2. 或者直接修改具体周期的 use_realtime 配置
+# 3. 启用 timestamp_validation 来监控数据质量
+# 4. 启用 repaint_protection 来检测重绘风险
+# 
+# 推荐配置:
+# - 回测/验证: mode = 'backtest'
+# - 保守实盘: mode = 'live_safe'
+# - 激进实盘: mode = 'live_aggressive' + repaint_protection.enabled = true

@@ -1,0 +1,522 @@
+// Sort state
+let currentSort = {
+    by: 'date',
+    order: 'desc'
+};
+
+export async function initVectorPanel() {
+    // Expose sort handler globally
+    window.vectorSort = async (field) => {
+        if (currentSort.by === field) {
+            currentSort.order = currentSort.order === 'desc' ? 'asc' : 'desc';
+        } else {
+            currentSort.by = field;
+            currentSort.order = 'desc'; // Default to desc for new field
+        }
+        await updateVectorData();
+    };
+
+    // Initial load
+    await updateVectorData();
+}
+
+export async function updateVectorData() {
+    try {
+        const [vectorResponse, rulesResponse, blockedResponse] = await Promise.all([
+            fetch(`/api/brain/vectors?limit=50&sort_by=${currentSort.by}&order=${currentSort.order}`),
+            fetch('/api/brain/rules'),
+            fetch('/api/brain/blocked-trades?limit=10')
+        ]);
+        const data = await vectorResponse.json();
+        const rulesData = rulesResponse.ok ? await rulesResponse.json() : [];
+        const blockedData = blockedResponse.ok ? await blockedResponse.json() : { blocked_trades: [] };
+
+        renderVectorPanel(data, rulesData, blockedData);
+    } catch (e) {
+        console.error("Failed to fetch vector data", e);
+        renderEmptyState();
+    }
+}
+
+function renderVectorPanel(data, rulesData, blockedData) {
+    const container = document.getElementById('vector-content');
+    if (!container) return;
+
+    const activeElement = document.activeElement;
+    let focusedSortField = null;
+    if (activeElement && activeElement.classList.contains('sortable-header')) {
+        focusedSortField = activeElement.getAttribute('data-sort');
+    }
+
+    let readableContext = data.current_context || '';
+    if (readableContext.includes('+')) {
+        const parts = readableContext.split('+').map(p => escapeHtml(p.trim()));
+        readableContext = `Searching for trades from similar markets: <span class="highlight">${parts.join(', ')}</span>`;
+    } else {
+        readableContext = escapeHtml(readableContext);
+    }
+
+    const contextHtml = data.current_context
+        ? `<div class="context-indicator">
+             <span class="context-value">${readableContext}</span>
+           </div>`
+        : '';
+
+    const freshnessHtml = `
+        <div class="vector-freshness" aria-live="polite">
+            <span>${escapeHtml(String(data.experience_count || 0))} experiences</span>
+            <span>${escapeHtml(String(data.rule_count || 0))} active rules</span>
+            <span>Refreshed ${new Intl.DateTimeFormat(navigator.language, { timeStyle: 'medium' }).format(new Date())}</span>
+        </div>
+    `;
+
+    const statsHtml = renderStatsCards(data);
+
+    const rulesHtml = renderSemanticRules(rulesData);
+
+    const frictionHtml = renderTradeFriction(blockedData);
+
+    const tableHtml = renderExperienceTable(data.experiences || []);
+
+    container.innerHTML = `
+        ${freshnessHtml}
+        ${contextHtml}
+        <div class="vector-stats">${statsHtml}</div>
+        ${frictionHtml}
+        <div style="margin-bottom: 24px;">
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: var(--text-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Semantic Rules</h3>
+            ${rulesHtml}
+        </div>
+        <div>
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: var(--text-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Experience History</h3>
+            <div class="vector-table">${tableHtml}</div>
+        </div>
+    `;
+
+    container.querySelectorAll('.sortable-header').forEach(header => {
+        const field = header.getAttribute('data-sort');
+        if (field) {
+            const handleSort = () => {
+                if (window.vectorSort) window.vectorSort(field);
+            };
+
+            header.addEventListener('click', handleSort);
+
+            header.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSort();
+                }
+            });
+        }
+    });
+
+    // Restore focus if it was on a sort header
+    if (focusedSortField) {
+        const newHeader = container.querySelector(`.sortable-header[data-sort="${focusedSortField}"]`);
+        if (newHeader) newHeader.focus();
+    }
+}
+
+function renderProgressRow(label, rawRate) {
+    const rate = parseFloat(rawRate);
+    if (isNaN(rate)) {
+        return `
+            <div class="stat-row">
+                <span>${label}</span>
+                <span class="val">--</span>
+            </div>
+        `;
+    }
+
+    let colorClass = 'danger';
+    if (rate >= 60) colorClass = 'success';
+    else if (rate >= 40) colorClass = 'warning';
+
+    return `
+        <div class="stat-row" style="margin-top: 10px;">
+            <span>${label}</span>
+            <span class="val" style="color: var(--accent-${colorClass});">${Math.round(rate)}%</span>
+        </div>
+        <div class="metric-bar-container">
+            <div class="metric-bar-fill ${colorClass}" style="width: ${Math.min(100, Math.max(0, rate))}%;"></div>
+        </div>
+    `;
+}
+
+function renderStatsCards(data) {
+    const confStats = data.confidence_stats || {};
+    const adxStats = data.adx_stats || {};
+    const factorStats = Array.isArray(data.factor_stats) ? data.factor_stats : Object.values(data.factor_stats || {});
+
+    // Fallback getter for factor stats if keys are strictly strings
+    const getFactorWR = (keywords) => {
+        const factor = factorStats.find(f => keywords.some(k => f.factor_name && f.factor_name.toUpperCase().includes(k)));
+        return factor ? factor.win_rate : '--';
+    };
+
+    return `
+        <div class="stat-card">
+            <div class="stat-label">Win Rate: Confidence</div>
+            <div>
+                ${renderProgressRow('HIGH', confStats.HIGH?.win_rate || '--')}
+                ${renderProgressRow('MEDIUM', confStats.MEDIUM?.win_rate || '--')}
+                ${renderProgressRow('LOW', confStats.LOW?.win_rate || '--')}
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Win Rate: ADX Range</div>
+            <div>
+                ${renderProgressRow('HIGH (>25)', adxStats.HIGH?.win_rate || '--')}
+                ${renderProgressRow('MED (20-25)', adxStats.MEDIUM?.win_rate || '--')}
+                ${renderProgressRow('LOW (<20)', adxStats.LOW?.win_rate || '--')}
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Win Rate: Sentiment</div>
+            <div>
+                ${renderProgressRow('BULLISH', getFactorWR(['BULLISH', 'GREED']))}
+                ${renderProgressRow('BEARISH', getFactorWR(['BEARISH', 'FEAR']))}
+                ${renderProgressRow('NEUTRAL', getFactorWR(['NEUTRAL']))}
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Win Rate: Volatility</div>
+            <div>
+                ${renderProgressRow('HIGH VOL', getFactorWR(['HIGH VOLATILITY']))}
+                ${renderProgressRow('LOW VOL', getFactorWR(['LOW VOLATILITY']))}
+            </div>
+        </div>
+    `;
+}
+
+function toNumber(value, fallback = null) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatNumber(value, digits = 1) {
+    const parsed = toNumber(value);
+    return parsed === null ? '--' : parsed.toFixed(digits);
+}
+
+function renderTradeFriction(data) {
+    const blockedTrades = data?.blocked_trades || [];
+    if (!blockedTrades.length) return '';
+    const rows = blockedTrades.slice(0, 6).map(item => {
+        const timestamp = item.timestamp
+            ? new Intl.DateTimeFormat(navigator.language, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(item.timestamp))
+            : '--';
+        const guard = item.guard_type ? item.guard_type.replace(/_/g, ' ') : 'unknown guard';
+        return `
+            <tr>
+                <td>${escapeHtml(guard)}</td>
+                <td>${escapeHtml(item.direction || '--')}</td>
+                <td>${escapeHtml(item.confidence || '--')}</td>
+                <td>${formatNumber(item.suggested_rr, 2)} / ${formatNumber(item.required_rr, 2)}</td>
+                <td>${timestamp}</td>
+            </tr>
+        `;
+    }).join('');
+    return `
+        <div class="trade-friction-block">
+            <h3>Trade Friction</h3>
+            <div class="vector-table compact">
+                <table>
+                    <thead>
+                        <tr><th>Guard</th><th>Direction</th><th>Confidence</th><th>R:R</th><th>Date</th></tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function renderSemanticRules(rules) {
+    if (!rules || rules.length === 0) {
+        return `
+            <div style="font-size: 13px; color: var(--text-muted); padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-subtle); border-radius: 6px;">
+                Status: Analyzing closed trades for profitable patterns and recurring loss drivers (wins + losses both considered).
+            </div>
+        `;
+    }
+
+    const TYPE_CONFIG = {
+        anti_pattern: { label: 'Avoid', color: 'var(--accent-danger)', bg: 'rgba(248,81,73,0.12)' },
+        corrective: { label: 'Improve', color: 'var(--accent-warning)', bg: 'rgba(210,153,34,0.12)' },
+        ai_mistake: { label: 'AI Mistake', color: '#79c0ff', bg: 'rgba(121,192,255,0.12)' },
+        best_practice: { label: 'Best Practice', color: 'var(--accent-success)', bg: 'rgba(63,185,80,0.10)' },
+    };
+
+    const renderDetailBlock = (label, value, color) => value
+        ? `<div style="font-size:11px; color:var(--text-muted); margin-top:6px; padding:4px 8px; background:rgba(255,255,255,0.04); border-radius:4px; border-left:2px solid ${color};">
+               → ${label}: ${escapeHtml(value)}
+           </div>`
+        : '';
+
+    const cards = rules.map(rule => {
+        const cfg = TYPE_CONFIG[rule.rule_type] || TYPE_CONFIG.best_practice;
+        const winRateValue = toNumber(rule.win_rate);
+        const winRate = winRateValue !== null ? `${Math.round(winRateValue)}%` : '--';
+
+        const wlLabel = (rule.wins !== undefined && rule.losses !== undefined)
+            ? `${rule.wins}W / ${rule.losses}L`
+            : `From ${rule.source_trades || '--'} Trades`;
+
+        const avgPnlValue = toNumber(rule.avg_pnl_pct);
+        const avgPnl = avgPnlValue !== null
+            ? `<span style="color:${avgPnlValue >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)'};">${avgPnlValue >= 0 ? '+' : ''}${avgPnlValue.toFixed(1)}% Avg P&L</span>`
+            : '';
+
+        const profitFactor = toNumber(rule.profit_factor);
+        const pf = profitFactor !== null && profitFactor < 90
+            ? `<span>PF ${profitFactor.toFixed(1)}</span>`
+            : '';
+
+        const exitProfile = rule.dominant_exit_profile
+            ? `<span>${escapeHtml(rule.dominant_exit_profile)}</span>`
+            : '';
+
+        const mistakeType = rule.mistake_type
+            ? `<span>${escapeHtml(rule.mistake_type.replace(/_/g, ' '))}</span>`
+            : '';
+
+        const failureHtml = renderDetailBlock('Why', rule.failure_reason, cfg.color);
+        const fixHtml = renderDetailBlock('Fix', rule.recommended_adjustment, cfg.color);
+
+        return `
+            <div class="rule-card" style="border-left: 3px solid ${cfg.color}; background: ${cfg.bg};">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <span style="font-size:10px; font-weight:600; padding:2px 6px; border-radius:3px; background:${cfg.color}; color:#0d1117; white-space:nowrap;">${cfg.label}</span>
+                </div>
+                <div class="rule-text">${escapeHtml(rule.rule_text)}</div>
+                ${failureHtml}
+                ${fixHtml}
+                <div class="rule-meta" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+                    <span>${wlLabel}</span>
+                    <span class="win-rate">${winRate} Win Rate</span>
+                    ${avgPnl}
+                    ${pf}
+                    ${exitProfile}
+                    ${mistakeType}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `<div class="rules-grid">${cards}</div>`;
+}
+
+function renderExperienceTable(experiences) {
+    if (!experiences || experiences.length === 0) {
+        return `
+            <div class="empty-state">
+                <p>No vector memories stored yet.</p>
+                <p style="font-size: 0.8em; color: #8b949e;">
+                    Experiences are recorded after completed trades with full metadata.
+                </p>
+            </div>
+        `;
+    }
+
+    function parseDocumentSections(doc) {
+        if (!doc) return {};
+        const sections = {};
+        // Split on recognisable section labels; the document is space-joined so we
+        // split on "Label:" patterns.
+        const pattern = /\b(Indicators|Structure|Confluences|Reasoning|Result|Post-trade):\s*/g;
+        let match;
+        let lastKey = '_header';
+        let lastIndex = 0;
+        sections['_header'] = '';
+        const hits = [];
+        while ((match = pattern.exec(doc)) !== null) {
+            hits.push({ key: match[1], start: match.index, contentStart: match.index + match[0].length });
+        }
+        for (let i = 0; i < hits.length; i++) {
+            const end = i + 1 < hits.length ? hits[i + 1].start : doc.length;
+            sections[hits[i].key] = doc.slice(hits[i].contentStart, end).trim();
+        }
+        if (hits.length > 0) {
+            sections['_header'] = doc.slice(0, hits[0].start).trim();
+        } else {
+            sections['_header'] = doc.trim();
+        }
+        return sections;
+    }
+
+    function formatContextPills(doc) {
+        if (!doc) return '--';
+        const sections = parseDocumentSections(doc);
+
+        // Keyword pills from header + indicators
+        const pillKeywords = [
+            { label: 'BULLISH', cls: 'pill-bullish' },
+            { label: 'BEARISH', cls: 'pill-bearish' },
+            { label: 'STRONG_TREND', cls: 'pill-strong-trend' },
+            { label: 'TRENDING', cls: 'pill-strong-trend' },
+            { label: 'RANGING', cls: 'pill-low-vol' },
+            { label: 'OVERSOLD', cls: 'pill-bullish' },
+            { label: 'OVERBOUGHT', cls: 'pill-bearish' },
+            { label: 'HIGH VOL', cls: 'pill-high-vol' },
+            { label: 'LOW VOL', cls: 'pill-low-vol' },
+        ];
+        const headerText = (sections['_header'] || '').toUpperCase();
+        const pillHtml = pillKeywords
+            .filter(kw => headerText.includes(kw.label))
+            .map(kw => `<span class="context-pill ${kw.cls}">${kw.label.replace('_', ' ')}</span>`)
+            .join(' ');
+
+        // Indicator mini-row: show ADX + RSI values if present
+        let indicatorsHtml = '';
+        const indText = sections['Indicators'] || '';
+        const adxM = indText.match(/ADX=(\d+\.?\d*)/);
+        const rsiM = indText.match(/RSI=(\d+\.?\d*)/);
+        const atrM = indText.match(/ATR=\$([\d]+)/);
+        const indParts = [];
+        if (adxM) indParts.push(`ADX&nbsp;${escapeHtml(adxM[1])}`);
+        if (rsiM) indParts.push(`RSI&nbsp;${escapeHtml(rsiM[1])}`);
+        if (atrM) indParts.push(`ATR&nbsp;$${escapeHtml(atrM[1])}`);
+        if (indParts.length) {
+            indicatorsHtml = `<div class="doc-section-row" style="color:var(--text-muted);font-size:0.78em;margin-top:3px;">${indParts.join(' &bull; ')}</div>`;
+        }
+
+        // Structure mini-row: RR + close_reason label appear here only as text
+        let structureHtml = '';
+        const strText = sections['Structure'] || '';
+        const rrM = strText.match(/RR=([\d.]+)/);
+        if (rrM) {
+            structureHtml = `<div class="doc-section-row" style="color:var(--text-muted);font-size:0.78em;">RR&nbsp;${escapeHtml(rrM[1])}</div>`;
+        }
+
+        // Post-trade: MFE / MAE
+        let postHtml = '';
+        const postText = sections['Post-trade'] || '';
+        const mfeM = postText.match(/MFE=([+\d.]+%)/);
+        const maeM = postText.match(/MAE=-([\d.]+%)/);
+        const postParts = [];
+        if (mfeM) postParts.push(`<span style="color:var(--accent-success);">MFE&nbsp;${escapeHtml(mfeM[1])}</span>`);
+        if (maeM) postParts.push(`<span style="color:var(--accent-danger);">MAE&nbsp;-${escapeHtml(maeM[1])}</span>`);
+        if (postParts.length) {
+            postHtml = `<div class="doc-section-row" style="font-size:0.78em;margin-top:2px;">${postParts.join(' ')}</div>`;
+        }
+
+        return `<div>${pillHtml}${indicatorsHtml}${structureHtml}${postHtml}</div>`;
+    }
+
+    const rows = experiences.map(exp => {
+        const meta = exp.metadata || {};
+        const outcome = meta.outcome || '--';
+        const outcomeClass = outcome === 'WIN' ? 'win' : outcome === 'LOSS' ? 'loss' : '';
+        const pnlValue = toNumber(meta.pnl_pct);
+        const pnl = pnlValue !== null ? `${pnlValue >= 0 ? '+' : ''}${pnlValue.toFixed(2)}%` : '--';
+        const pnlClass = pnlValue === null ? '' : (pnlValue >= 0 ? 'positive' : 'negative');
+        const confidence = meta.confidence || '--';
+        const direction = meta.direction || '--';
+        const symbol = meta.symbol ? `<span style="font-size:0.8em;color:var(--text-muted);">${escapeHtml(meta.symbol)}</span>` : '';
+        const similarityValue = toNumber(exp.similarity);
+        const similarity = similarityValue !== null && similarityValue > 0 ? `${similarityValue.toFixed(1)}%` : '--';
+        const timestamp = meta.timestamp ? new Intl.DateTimeFormat(navigator.language, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(meta.timestamp)) : '--';
+
+        const closeReason = meta.close_reason || '';
+        const closeColorMap = { stop_loss: 'var(--accent-danger)', take_profit: 'var(--accent-success)', analysis_signal: 'var(--accent-primary)', timeout: 'var(--accent-warning)' };
+        const closeColor = closeColorMap[closeReason] || 'var(--text-muted)';
+        const closeBadge = closeReason
+            ? `<br><span style="font-size:0.72em;color:${closeColor};opacity:0.85;">${escapeHtml(closeReason.replace('_', ' '))}</span>`
+            : '';
+
+        const contextDisplay = formatContextPills(exp.document || '');
+
+        return `
+            <tr title="${escapeHtml(exp.document || '')}">
+                <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.9em;">${escapeHtml((exp.id || '').substring(0, 8))}...</td>
+                <td style="font-size:0.85em;">${symbol}</td>
+                <td class="context">${contextDisplay}</td>
+                <td class="${outcomeClass}">${escapeHtml(outcome)}${closeBadge}</td>
+                <td class="${pnlClass}">${pnl}</td>
+                <td>${escapeHtml(confidence)}</td>
+                <td>${escapeHtml(direction)}</td>
+                <td>${similarity}</td>
+                <td>${timestamp}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const getSortIndicator = (field) => {
+        if (currentSort.by !== field) {
+            return '<span style="opacity: 0.3;" class="meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg></span>';
+        }
+        return currentSort.order === 'asc'
+            ? '<span class="meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></span>'
+            : '<span class="meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>';
+    };
+
+    const getAriaSort = (field) => {
+        if (currentSort.by !== field) return 'none';
+        return currentSort.order === 'asc' ? 'ascending' : 'descending';
+    };
+
+    return `
+        <style>
+            .sortable-header { cursor: pointer; user-select: none; }
+            .sortable-header:hover { background-color: rgba(255, 255, 255, 0.05); }
+            .sortable-header:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
+            .doc-section-row { line-height: 1.4; margin-top: 2px; }
+        </style>
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Symbol</th>
+                    <th scope="col">Context</th>
+                    <th scope="col" class="sortable-header" data-sort="outcome" tabindex="0" role="columnheader" aria-sort="${getAriaSort('outcome')}">
+                        Outcome <span aria-hidden="true">${getSortIndicator('outcome')}</span>
+                    </th>
+                    <th scope="col" class="sortable-header" data-sort="pnl" tabindex="0" role="columnheader" aria-sort="${getAriaSort('pnl')}">
+                        P&L <span aria-hidden="true">${getSortIndicator('pnl')}</span>
+                    </th>
+                    <th scope="col" class="sortable-header" data-sort="confidence" tabindex="0" role="columnheader" aria-sort="${getAriaSort('confidence')}">
+                        Confidence <span aria-hidden="true">${getSortIndicator('confidence')}</span>
+                    </th>
+                    <th scope="col" class="sortable-header" data-sort="direction" tabindex="0" role="columnheader" aria-sort="${getAriaSort('direction')}">
+                        Direction <span aria-hidden="true">${getSortIndicator('direction')}</span>
+                    </th>
+                    <th scope="col" class="sortable-header" data-sort="similarity" tabindex="0" role="columnheader" aria-sort="${getAriaSort('similarity')}">
+                        Similarity <span aria-hidden="true">${getSortIndicator('similarity')}</span>
+                    </th>
+                    <th scope="col" class="sortable-header" data-sort="date" tabindex="0" role="columnheader" aria-sort="${getAriaSort('date')}">
+                        Date <span aria-hidden="true">${getSortIndicator('date')}</span>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>
+    `;
+}
+
+function renderEmptyState() {
+    const container = document.getElementById('vector-content');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="empty-state">
+            <p>Vector memory service not available.</p>
+            <p style="font-size: 0.8em; color: #8b949e;">
+                Ensure ChromaDB is initialized and the bot has recorded trades.
+            </p>
+        </div>
+    `;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}

@@ -1,0 +1,1224 @@
+/* ========================================
+   LLM-TradeBot UI Enhancement Patch
+   Version: 2.0
+   优化重点：玻璃态、动画、交互体验
+   ======================================== */
+
+/* 1. 增强玻璃态效果 */
+.glass-panel {
+    background: linear-gradient(135deg,
+            rgba(5, 7, 10, 0.85) 0%,
+            rgba(14, 18, 23, 0.75) 100%);
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+    transform: translateY(-2px);
+    border-color: rgba(240, 185, 11, 0.35);
+    box-shadow:
+        0 12px 48px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(240, 185, 11, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 2. 动态背景网格 */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image:
+        linear-gradient(rgba(240, 185, 11, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 240, 255, 0.025) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: gridMove 20s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+}
+
+@keyframes gridMove {
+    0% {
+        transform: translate(0, 0);
+    }
+
+    100% {
+        transform: translate(50px, 50px);
+    }
+}
+
+/* 3. 表格行悬停效果 - 简化版（移除了干扰列对齐的 ::before 伪元素） */
+#decision-table tbody tr,
+#trade-table tbody tr {
+    transition: background 0.2s ease;
+}
+
+#decision-table tbody tr:hover,
+#trade-table tbody tr:hover {
+    background: rgba(240, 185, 11, 0.08);
+}
+
+/* 4. 按钮波纹效果 */
+.btn-control {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-control::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+    pointer-events: none;
+}
+
+.btn-control:active::after {
+    width: 200px;
+    height: 200px;
+}
+
+/* 5. 渐变文字效果（标题） */
+.card h2 {
+    background: linear-gradient(135deg,
+            #f8f5e6 0%,
+            #f0b90b 45%,
+            #00f0ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    background-size: 200% auto;
+}
+
+/* 6. 数据更新闪烁效果 */
+@keyframes dataUpdate {
+    0% {
+        box-shadow: 0 0 0 0 rgba(0, 214, 143, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 20px 10px rgba(0, 214, 143, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 214, 143, 0);
+    }
+}
+
+.status-item.updated {
+    animation: dataUpdate 0.6s ease-out;
+}
+
+/* 7. 徽章脉冲效果 */
+.badge.online,
+.badge.running {
+    position: relative;
+}
+
+.badge.online::before,
+.badge.running::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: rgba(0, 214, 143, 0.3);
+    animation: badgePulse 2s ease-in-out infinite;
+    z-index: -1;
+}
+
+@keyframes badgePulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+
+    50% {
+        transform: scale(1.15);
+        opacity: 0;
+    }
+}
+
+/* 8. 图表容器优化 */
+.chart-container-lg {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+.chart-container-lg::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(0, 240, 255, 0.45),
+            transparent);
+}
+
+/* 9. 改进按钮设置样式 */
+.btn-settings-elegant {
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-settings-elegant::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+    transition: left 0.5s ease;
+}
+
+.btn-settings-elegant:hover::before {
+    left: 100%;
+}
+
+.btn-settings-elegant:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(240, 185, 11, 0.25);
+}
+
+/* 10. 状态指示器改进 */
+.status-item {
+    position: relative;
+    overflow: hidden;
+}
+
+.status-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(240, 185, 11, 0.45),
+            transparent);
+    transform: translateX(-100%);
+    animation: statusScan 3s ease-in-out infinite;
+}
+
+@keyframes statusScan {
+
+    0%,
+    100% {
+        transform: translateX(-100%);
+    }
+
+    50% {
+        transform: translateX(100%);
+    }
+}
+
+/* 11. Logo 浮动效果 */
+.logo .icon {
+    animation: logoFloat 3s ease-in-out infinite;
+}
+
+@keyframes logoFloat {
+
+    0%,
+    100% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+/* 12. 滚动条美化 */
+.table-container::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #f0b90b, #00f0ff);
+    border-radius: 5px;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #00f0ff, #f0b90b);
+}
+
+/* 13. 输入框焦点效果 */
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: #f0b90b !important;
+    box-shadow: 0 0 0 3px rgba(240, 185, 11, 0.12) !important;
+}
+
+/* 14. 模态框动画 */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(5px);
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.settings-modal {
+    width: min(640px, 92vw);
+    background: #1a202c;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    animation: slideUp 0.3s ease-out;
+}
+
+.modal-content .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-content .btn-close {
+    background: none;
+    border: none;
+    color: #a0aec0;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+#settings-modal {
+    z-index: 10000;
+}
+
+#settings-modal .modal-header h3 {
+    margin: 0;
+    color: #fff;
+}
+
+#settings-modal .settings-tabs {
+    display: flex;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+#settings-modal .tab-btn {
+    flex: 1;
+    padding: 12px;
+    background: none;
+    border: none;
+    color: #a0aec0;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+}
+
+#settings-modal .tab-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+#settings-modal .tab-btn.active {
+    color: #00ff9d;
+    border-bottom-color: #00ff9d;
+    background: rgba(0, 255, 157, 0.05);
+}
+
+#settings-modal .settings-body {
+    padding: 20px;
+    min-height: 300px;
+    max-height: min(64vh, 620px);
+    overflow-y: auto;
+}
+
+#settings-modal .tab-pane {
+    display: none;
+}
+
+#settings-modal .tab-pane.active {
+    display: block;
+}
+
+#settings-modal .form-group {
+    margin-bottom: 15px;
+}
+
+#settings-modal .form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: #a0aec0;
+    font-size: 0.9em;
+}
+
+#settings-modal .form-control {
+    width: 100%;
+    padding: 8px 12px;
+    background: #2d3748;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: #fff;
+}
+
+#settings-modal .form-control:focus {
+    outline: none;
+    border-color: #00ff9d;
+}
+
+#settings-modal .modal-footer {
+    padding: 15px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: right;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+#btn-save-settings {
+    position: relative;
+    z-index: 2;
+    cursor: pointer;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(50px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* 15. 数值颜色增强 */
+.val.pos {
+    color: #00ff9d;
+    text-shadow: 0 0 10px rgba(0, 255, 157, 0.3);
+}
+
+.val.neg {
+    color: #ff4757;
+    text-shadow: 0 0 10px rgba(255, 71, 87, 0.3);
+}
+
+/* 16. 加载状态 */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+.loading {
+    background: linear-gradient(90deg,
+            rgba(255, 255, 255, 0.05) 0%,
+            rgba(255, 255, 255, 0.1) 50%,
+            rgba(255, 255, 255, 0.05) 100%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
+}
+
+/* 17. 响应式优化 */
+@media (max-width: 768px) {
+    .glass-panel:hover {
+        transform: none;
+        /* 移动端禁用悬停效果 */
+    }
+
+    body::after {
+        display: none;
+        /* 移动端禁用背景网格 */
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    body::after,
+    .crt-overlay {
+        display: none !important;
+    }
+}
+
+/* 18. 打印样式优化 */
+@media print {
+    .glass-panel {
+        background: white !important;
+        border: 1px solid #ccc !important;
+        box-shadow: none !important;
+    }
+}
+
+/* 19. [NEW] Multi-Agent Mission Control Layout */
+.hero-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    gap: 20px;
+    height: calc(100vh - 160px);
+    min-height: 0;
+    align-items: stretch;
+}
+
+@media (max-width: 1200px) {
+    .header {
+        height: auto;
+        padding: 10px 14px;
+    }
+
+    .status-indicators {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: space-between;
+    }
+
+    .controls {
+        width: 100%;
+        margin-right: 0;
+        padding-right: 0;
+        border-right: 0;
+        flex-wrap: wrap;
+    }
+
+    .hero-layout {
+        grid-template-columns: minmax(0, 1fr);
+        height: auto;
+        min-height: 0;
+    }
+
+    .hero-center {
+        order: 1;
+    }
+
+    .sidebar-left {
+        order: 2;
+    }
+
+    .sidebar-right {
+        order: 3;
+    }
+}
+
+.hero-center {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.hero-chatroom-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0 !important;
+}
+
+.hero-scroller {
+    flex: 1;
+    max-height: none !important;
+}
+
+/* Sidebar Utilities */
+.sidebar-left,
+.sidebar-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-height: 0;
+}
+
+/* Compact Metrics & Ranking */
+.pnl-metrics-compact {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.pnl-chart-wrapper-compact {
+    height: 180px;
+}
+
+.ranking-compact-container {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.compact-table {
+    width: 100%;
+    font-size: 0.85rem;
+}
+
+.compact-table th {
+    color: #718096;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    padding: 8px;
+}
+
+.compact-table td {
+    padding: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Bottom Panel */
+.bottom-detail-panels {
+    margin-top: 20px;
+}
+
+.mini-records {
+    max-height: 250px;
+}
+
+.section-header-compact h2 {
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+}
+
+/* Live Positions Card Styles */
+.live-positions-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.card-header-compact {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.card-header-compact h2 {
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.positions-summary {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.summary-item .label {
+    font-size: 0.8rem;
+    color: #a0aec0;
+}
+
+.summary-item .value {
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.positions-list-container {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 15px;
+    min-height: 150px;
+}
+
+.position-details-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.position-item {
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+}
+
+.position-item.long {
+    border-left-color: #48bb78;
+}
+
+.position-item.short {
+    border-left-color: #f56565;
+}
+
+.pos-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.pos-symbol {
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.pos-pnl {
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.pos-sub {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #718096;
+}
+
+.empty-msg {
+    color: #718096;
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.sidebar-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 15px 0;
+}
+
+.account-stats-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+}
+
+.stat-row .label {
+    color: #a0aec0;
+}
+
+.stat-row .value {
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Keep LLM metrics inside left sidebar even when token numbers are very long */
+.llm-metrics-panel .stat-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    column-gap: 8px;
+    align-items: start;
+}
+
+.llm-metrics-panel .stat-row .label {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+}
+
+.llm-metrics-panel .stat-row .value {
+    min-width: 0;
+    max-width: 100%;
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.25;
+}
+
+/* Existing Chatroom Overrides */
+.chatroom-container {
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.chatroom-title {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chatroom-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: #f0b90b transparent;
+}
+
+.chat-bubble {
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    position: relative;
+    animation: slideIn 0.3s ease-out;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.chat-bubble.quant_analyst {
+    background: rgba(0, 240, 255, 0.1);
+    border-left: 4px solid #00f0ff;
+    align-self: flex-start;
+}
+
+.chat-bubble.predict_agent {
+    background: rgba(186, 104, 200, 0.1);
+    border-left: 4px solid #ba68c8;
+    align-self: flex-start;
+}
+
+.chat-bubble.multi_period_agent {
+    background: rgba(66, 153, 225, 0.12);
+    border-left: 4px solid #4299e1;
+    align-self: flex-start;
+}
+
+.chat-bubble.bull_agent {
+    background: rgba(0, 214, 143, 0.1);
+    border-left: 4px solid #00d68f;
+    align-self: flex-start;
+}
+
+.chat-bubble.bear_agent {
+    background: rgba(255, 71, 87, 0.1);
+    border-left: 4px solid #ff4757;
+    align-self: flex-start;
+}
+
+.chat-bubble.trend_agent {
+    background: rgba(88, 204, 255, 0.12);
+    border-left: 4px solid #58ccff;
+    align-self: flex-start;
+}
+
+.chat-bubble.setup_agent {
+    background: rgba(129, 230, 217, 0.12);
+    border-left: 4px solid #81e6d9;
+    align-self: flex-start;
+}
+
+.chat-bubble.trigger_agent {
+    background: rgba(255, 159, 67, 0.12);
+    border-left: 4px solid #ff9f43;
+    align-self: flex-start;
+}
+
+.chat-bubble.risk_audit {
+    background: rgba(255, 99, 132, 0.12);
+    border-left: 4px solid #ff6384;
+    align-self: flex-start;
+}
+
+.chat-bubble.symbol_selector {
+    background: rgba(130, 87, 229, 0.12);
+    border-left: 4px solid #8257e5;
+    align-self: flex-start;
+}
+
+.chat-bubble.reflection_agent {
+    background: rgba(255, 171, 0, 0.1);
+    border-left: 4px solid #ffab00;
+    align-self: flex-start;
+}
+
+.chat-bubble.decision_core {
+    background: rgba(240, 185, 11, 0.1);
+    border-left: 4px solid #f0b90b;
+    align-self: flex-start;
+    width: 95%;
+    max-width: 95%;
+    margin-top: 8px;
+    box-shadow: 0 4px 15px rgba(240, 185, 11, 0.1);
+}
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.chat-agent-name {
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.chat-timestamp {
+    color: #718096;
+    font-weight: 400;
+}
+
+.chat-content {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: #e2e8f0;
+}
+
+.chat-level-success .chat-content {
+    color: #00ff9d;
+}
+
+.chat-level-warning .chat-content {
+    color: #ffeb3b;
+}
+
+.chat-level-error .chat-content {
+    color: #ff4757;
+}
+
+.chatroom-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #4a5568;
+    text-align: center;
+    padding: 40px;
+}
+
+.chatroom-empty .icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    opacity: 0.3;
+}
+
+/* Agent Config Modal */
+.agent-config-modal {
+    width: 900px;
+    max-width: 96vw;
+    background: #0d1117;
+    height: min(92vh, 980px);
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.agent-config-body {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 16px;
+    padding: 16px;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+.agent-config-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.agent-config-tab {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #cbd5e0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+}
+
+.agent-config-tab.active {
+    background: rgba(0, 255, 157, 0.12);
+    border-color: rgba(0, 255, 157, 0.4);
+    color: #00ff9d;
+}
+
+.agent-config-panel {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 16px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.agent-config-section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+    height: 100%;
+}
+
+.agent-config-section h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #00ff9d;
+    font-family: var(--font-display);
+}
+
+.agent-config-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.agent-config-row label {
+    font-size: 0.78rem;
+    color: #a0aec0;
+}
+
+.agent-config-row textarea,
+.agent-config-row > input[type="text"] {
+    background: #161b22;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: #e2e8f0;
+    padding: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    min-height: 120px;
+}
+
+.agent-config-param-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: min(34vh, 360px);
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.agent-config-param-item {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.agent-config-param-item.agent-config-param-inline {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.agent-config-param-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.agent-config-param-name {
+    font-size: 0.78rem;
+    color: #cbd5e0;
+}
+
+.agent-config-param-value {
+    font-size: 0.75rem;
+    color: #00ff9d;
+    font-family: var(--font-mono);
+}
+
+.agent-config-param-controls {
+    display: grid;
+    grid-template-columns: 1fr 120px;
+    gap: 8px;
+    align-items: center;
+}
+
+.agent-config-param-controls input[type="range"] {
+    width: 100%;
+    accent-color: #00ff9d;
+}
+
+.agent-config-param-controls input[type="number"],
+.agent-config-param-item input[type="text"] {
+    background: #161b22;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: #e2e8f0;
+    padding: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    min-height: auto;
+}
+
+.agent-config-param-empty {
+    color: #718096;
+    font-size: 0.78rem;
+    margin: 0;
+    padding: 8px 0;
+}
+
+.agent-config-row-params {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+.agent-config-row-prompt {
+    flex: 1 1 auto;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+}
+
+.agent-config-row-prompt textarea {
+    flex: 1 1 auto;
+    min-height: 160px;
+    max-height: none;
+}
+
+.agent-config-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.agent-config-toggle-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #00ff9d;
+}
+
+.agent-config-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+}
+
+#prompts-modal .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 12px 16px 16px;
+}
+
+.agent-config-toast {
+    margin-right: auto;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: all 180ms ease;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #a0aec0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-family: var(--font-display);
+}
+
+.agent-config-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.agent-config-toast.success {
+    color: #00ff9d;
+    border-color: rgba(0, 255, 157, 0.35);
+    background: rgba(0, 255, 157, 0.12);
+}
+
+.agent-config-toast.error {
+    color: #ff5b5b;
+    border-color: rgba(255, 91, 91, 0.4);
+    background: rgba(255, 91, 91, 0.12);
+}
+
+.btn-primary {
+    background: var(--nofx-gold);
+    color: #0b0e11;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+@media (max-width: 900px) {
+    .agent-config-body {
+        grid-template-columns: 1fr;
+    }
+    .agent-config-tabs {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+}
