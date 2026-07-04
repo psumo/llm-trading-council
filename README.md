@@ -1,4 +1,6 @@
-# ⚖️ Trading Confluence — Three AI Traders Argue. A Judge Decides. Every Trade Gets Scored.
+# ⚖️ LLM Trading Judge
+
+### Three AI traders argue. An LLM judge decides. Every trade gets honestly scored.
 
 **An open-source signal-fusion lab for crypto: an LLM chart analyst, a multi-agent quant bot, and a real-time order-flow engine each form an independent opinion — then a calibrated LLM judge fuses them into one decision, a guard pipeline can veto it, and a fee-honest paper tracker keeps the receipts.**
 
