@@ -59,8 +59,8 @@ See [`VENDOR.md`](VENDOR.md) for exact fork provenance and [`vendor-patches/`](v
 > **Windows-first** (the ops scripts are PowerShell); the Python/TS code itself is portable. You'll need: Python 3.13+, Node 18+, Docker (TimescaleDB), a [Gemini API key](https://aistudio.google.com/) (the free tier works).
 
 ```bash
-git clone https://github.com/psumo/trading-confluence
-cd trading-confluence
+git clone https://github.com/psumo/llm-trading-judge
+cd llm-trading-judge
 
 # 1. Configure the aggregator
 cd aggregator
