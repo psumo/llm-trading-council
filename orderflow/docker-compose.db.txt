@@ -30,7 +30,7 @@ services:
     ports:
       # host 5455 -> container 5432. 5455 avoids 5432 (perp_trader_db) and the
       # repo's default 5433.
-      - '5455:5432'
+      - '127.0.0.1:5455:5432'
     volumes:
       - confluence_orderflow_pgdata:/home/postgres/pgdata/data
 
