@@ -1,0 +1,16 @@
+# Core service
+fastapi==0.136.3
+uvicorn==0.49.0
+pydantic==2.13.4
+PyYAML==6.0.3
+
+# Sources / judge
+httpx==0.28.1
+psycopg[binary]==3.3.4
+
+# Desktop notifications (Windows). On Linux/macOS this package is skipped and
+# the notifier degrades to log-only; see notify.py.
+windows-toasts==1.3.1; sys_platform == "win32"
+
+# Tests
+pytest==9.0.3

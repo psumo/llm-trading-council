@@ -61,7 +61,9 @@ Fork provenance is in [`VENDOR.md`](VENDOR.md). Every local patch is a reviewabl
 
 ## Quickstart
 
-Windows-first for now (the ops scripts are PowerShell, the code itself is portable). You need Python 3.13+, Node 18+, Docker for TimescaleDB, and a [Gemini API key](https://aistudio.google.com/). The free tier works.
+**Have an AI coding agent?** (Claude Code, Cursor, Codex, etc.) Paste [`SETUP_PROMPT.md`](SETUP_PROMPT.md) into it and it will do this entire setup for you, including writing Linux/macOS launchers if you need them. It only asks you for a Gemini key and a symbol.
+
+Doing it by hand: Windows-first for now (the ops scripts are PowerShell, the code itself is portable). You need Python 3.13+, Node 18+, Docker for TimescaleDB, and a [Gemini API key](https://aistudio.google.com/). The free tier works.
 
 ```bash
 git clone https://github.com/psumo/llm-trading-council
